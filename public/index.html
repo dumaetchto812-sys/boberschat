@@ -3319,15 +3319,7 @@
                 alert('👑 Ваша роль обновлена: ' + data.role);
             });
 
-            // ============ СОБЫТИЯ КНОПОК ============
-            sendBtn.addEventListener('click', sendMessage);
-            msgInput.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') sendMessage();
-            });
-
-            addImgBtn.addEventListener('click', () => sendMedia('img'));
-            uploadBtn.addEventListener('click', uploadOwnImage);
-
+            // ============ ОБНОВЛЕННАЯ ФУНКЦИЯ ОТПРАВКИ ИЗОБРАЖЕНИЙ ============
             function sendMedia(type) {
                 const urls = {
                     img: [
@@ -3365,6 +3357,14 @@
                 fileInput.onchange = (e) => {
                     const file = e.target.files[0];
                     if (!file) return;
+                    
+                    // Проверяем размер файла (максимум 2MB)
+                    if (file.size > 2 * 1024 * 1024) {
+                        alert('Файл слишком большой! Максимум 2MB.');
+                        fileInput.value = '';
+                        return;
+                    }
+                    
                     const reader = new FileReader();
                     reader.onload = (ev) => {
                         const msgData = {
@@ -3384,10 +3384,22 @@
                         }
                         socket.emit('sendMessage', msgData);
                     };
+                    reader.onerror = function() {
+                        alert('Ошибка при чтении файла!');
+                    };
                     reader.readAsDataURL(file);
                     fileInput.value = '';
                 };
             }
+
+            // ============ СОБЫТИЯ КНОПОК ============
+            sendBtn.addEventListener('click', sendMessage);
+            msgInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') sendMessage();
+            });
+
+            addImgBtn.addEventListener('click', () => sendMedia('img'));
+            uploadBtn.addEventListener('click', uploadOwnImage);
 
             // ============ ПРОФИЛЬ ============
             profileArea.addEventListener('click', () => openProfile(socket.id));
