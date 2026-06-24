@@ -1,15 +1,17 @@
 {
   "name": "bober-chat",
-  "version": "2.0.0",
-  "description": "Bober Chat с админ-панелью",
+  "version": "1.0.0",
+  "description": "Bober Chat with moderation",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
     "express": "^4.18.2",
-    "socket.io": "^4.6.1",
-    "cors": "^2.8.5",
-    "dotenv": "^16.3.1"
+    "socket.io": "^4.7.2",
+    "cors": "^2.8.5"
+  },
+  "engines": {
+    "node": ">=16.0.0"
   }
 }
