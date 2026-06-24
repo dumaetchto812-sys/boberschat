@@ -35,7 +35,10 @@ let userProfiles = {};
 let userRoles = {};
 let userWarnings = {};
 let bannedUsers = {};
+let bannedIPs = {};
+let usedUsernames = {};
 let moderationLog = [];
+let userIPs = {};
 
 const ROLES = {
     ADMIN: 'admin',
@@ -49,6 +52,7 @@ const SETTINGS = {
     adminKey: 'bober_admin_2024'
 };
 
+// ============ ФУНКЦИИ ============
 function getUserRole(socketId) {
     return userRoles[socketId] || ROLES.USER;
 }
@@ -72,6 +76,10 @@ function isBanned(socketId) {
     return true;
 }
 
+function isIPBanned(ip) {
+    return !!bannedIPs[ip];
+}
+
 function logModerationAction(action, moderator, target, reason) {
     moderationLog.push({
         action,
@@ -83,26 +91,36 @@ function logModerationAction(action, moderator, target, reason) {
     if (moderationLog.length > 1000) moderationLog.shift();
 }
 
-function banUser(socketId, reason, moderator) {
+function banUser(socketId, reason, moderator, banIP = false) {
     if (!socketId) return;
     if (isAdmin(socketId)) {
         io.to(socketId).emit('notification', '❌ Нельзя забанить администратора');
         return;
     }
+    
+    const user = userProfiles[socketId];
+    const nick = user?.nick || 'Неизвестный';
+    const ip = userIPs[socketId];
+    
     bannedUsers[socketId] = {
         reason: reason || 'Нарушение правил',
         until: Date.now() + SETTINGS.banDuration
     };
-    const user = userProfiles[socketId];
-    const nick = user?.nick || 'Неизвестный';
-    logModerationAction('Бан', moderator || 'Система', nick, reason);
+    
+    if (banIP && ip) {
+        bannedIPs[ip] = reason || 'Нарушение правил';
+    }
+    
+    logModerationAction('Бан', moderator || 'Система', nick, reason + (banIP ? ' (IP забанен)' : ''));
     io.emit('moderationLog', moderationLog);
     io.emit('bannedUsers', bannedUsers);
+    
     const socket = io.sockets.sockets.get(socketId);
     if (socket) {
         socket.emit('banned', { reason: reason, until: bannedUsers[socketId].until });
         socket.disconnect();
     }
+    
     io.emit('onlineUsers', getOnlineUsers());
     io.emit('notification', `🔒 ${nick} был забанен. Причина: ${reason}`);
 }
@@ -111,8 +129,12 @@ function unbanUser(socketId, moderator) {
     if (!bannedUsers[socketId]) return;
     const user = userProfiles[socketId];
     const nick = user?.nick || 'Неизвестный';
+    const ip = userIPs[socketId];
+    
     delete bannedUsers[socketId];
     delete userWarnings[socketId];
+    if (ip) delete bannedIPs[ip];
+    
     logModerationAction('Разбан', moderator || 'Система', nick, '');
     io.emit('moderationLog', moderationLog);
     io.emit('bannedUsers', bannedUsers);
@@ -133,8 +155,20 @@ function addWarning(socketId) {
     }
 }
 
+// ============ SOCKET.IO ============
 io.on('connection', (socket) => {
-    console.log('🟢 Подключен:', socket.id);
+    // Получаем IP
+    const clientIP = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address || 'unknown';
+    userIPs[socket.id] = clientIP;
+    
+    console.log('🟢 Подключен:', socket.id, 'IP:', clientIP);
+
+    // Проверка на IP-бан
+    if (isIPBanned(clientIP)) {
+        socket.emit('banned', { reason: bannedIPs[clientIP] || 'Ваш IP забанен', until: Date.now() + 86400000 });
+        socket.disconnect();
+        return;
+    }
 
     if (isBanned(socket.id)) {
         socket.emit('banned', { reason: bannedUsers[socket.id]?.reason || 'Вы забанены', until: bannedUsers[socket.id]?.until });
@@ -143,14 +177,27 @@ io.on('connection', (socket) => {
     }
 
     socket.on('register', (data) => {
+        // Проверка на занятость юзернейма
+        const username = data.username || 'гость';
+        if (usedUsernames[username] && usedUsernames[username] !== socket.id) {
+            socket.emit('notification', '❌ Этот юзернейм уже занят!');
+            socket.emit('usernameTaken', { username: username });
+            return;
+        }
+        
+        if (usedUsernames[username] === socket.id || !usedUsernames[username]) {
+            usedUsernames[username] = socket.id;
+        }
+        
         socket.data.nick = data.nick || 'Гость';
-        socket.data.username = data.username || 'гость';
+        socket.data.username = username;
         socket.data.peerId = data.peerId;
         socket.data.avatar = data.avatar || '👤';
         socket.data.status = data.status || 'В сети';
         socket.data.bio = data.bio || '';
         socket.data.banner = data.banner || '';
         socket.data.color = data.color || '#f093fb';
+        socket.data.ip = clientIP;
         
         if (!userRoles[socket.id]) {
             const sockets = io.sockets.sockets;
@@ -173,14 +220,16 @@ io.on('connection', (socket) => {
             banner: socket.data.banner,
             color: socket.data.color,
             peerId: socket.data.peerId,
-            role: userRoles[socket.id]
+            role: userRoles[socket.id],
+            ip: clientIP
         };
         
-        console.log(`👤 ${socket.data.nick} (@${socket.data.username}) зарегистрирован [${userRoles[socket.id]}]`);
+        console.log(`👤 ${socket.data.nick} (@${socket.data.username}) зарегистрирован [${userRoles[socket.id]}] IP: ${clientIP}`);
         io.emit('onlineUsers', getOnlineUsers());
         io.emit('userProfiles', userProfiles);
         io.emit('userRoles', userRoles);
         io.emit('moderationLog', moderationLog);
+        io.emit('bannedUsers', bannedUsers);
     });
 
     socket.on('claimAdmin', (key) => {
@@ -271,7 +320,7 @@ io.on('connection', (socket) => {
     socket.on('moderation:ban', (data) => {
         if (!isModerator(socket.id)) { socket.emit('notification', '❌ Нет прав'); return; }
         if (isAdmin(data.targetId)) { socket.emit('notification', '❌ Нельзя забанить админа'); return; }
-        banUser(data.targetId, data.reason || 'Нарушение правил', socket.data.nick || 'Модератор');
+        banUser(data.targetId, data.reason || 'Нарушение правил', socket.data.nick || 'Модератор', data.banIP || false);
         io.emit('bannedUsers', bannedUsers);
         socket.emit('notification', '✅ Пользователь забанен');
     });
@@ -285,6 +334,29 @@ io.on('connection', (socket) => {
     socket.on('moderation:getLogs', () => {
         if (!isModerator(socket.id)) { socket.emit('notification', '❌ Нет прав'); return; }
         socket.emit('moderationLog', moderationLog);
+    });
+
+    socket.on('moderation:searchUser', (data) => {
+        if (!isModerator(socket.id)) { socket.emit('notification', '❌ Нет прав'); return; }
+        const query = data.query.toLowerCase().trim();
+        const results = [];
+        for (const [id, profile] of Object.entries(userProfiles)) {
+            const nick = (profile.nick || '').toLowerCase();
+            const username = (profile.username || '').toLowerCase();
+            if (nick.includes(query) || username.includes(query)) {
+                results.push({
+                    socketId: id,
+                    nick: profile.nick,
+                    username: profile.username,
+                    avatar: profile.avatar,
+                    status: profile.status,
+                    role: userRoles[id] || ROLES.USER,
+                    isBanned: !!bannedUsers[id],
+                    ip: userIPs[id] || 'unknown'
+                });
+            }
+        }
+        socket.emit('moderation:searchResults', results);
     });
 
     // ============ ЗВОНКИ ============
@@ -366,7 +438,12 @@ io.on('connection', (socket) => {
 
     socket.on('disconnect', () => {
         console.log('🔴 Отключен:', socket.id);
+        const username = socket.data?.username;
+        if (username && usedUsernames[username] === socket.id) {
+            delete usedUsernames[username];
+        }
         delete userProfiles[socket.id];
+        delete userIPs[socket.id];
         for (const chatId in callRooms) {
             if (callRooms[chatId].participants.includes(socket.id)) {
                 callRooms[chatId].participants = callRooms[chatId].participants.filter(id => id !== socket.id);
@@ -379,6 +456,7 @@ io.on('connection', (socket) => {
         io.emit('onlineUsers', getOnlineUsers());
         io.emit('userProfiles', userProfiles);
         io.emit('userRoles', userRoles);
+        io.emit('bannedUsers', bannedUsers);
     });
 });
 
