@@ -28,6 +28,7 @@
             max-width: 700px;
             width: 100%;
             border: 1px solid rgba(255,255,255,0.08);
+            backdrop-filter: blur(10px);
         }
         .header {
             display: flex;
@@ -47,6 +48,14 @@
             display: flex;
             align-items: center;
             gap: 10px;
+            cursor: pointer;
+            padding: 4px 12px 4px 4px;
+            border-radius: 30px;
+            background: rgba(255,255,255,0.03);
+            transition: 0.3s;
+        }
+        .profile:hover {
+            background: rgba(255,255,255,0.06);
         }
         .profile .avatar {
             width: 36px;
@@ -61,7 +70,6 @@
         .profile .nick {
             font-size: 0.9rem;
             color: #fff;
-            cursor: pointer;
         }
         .users {
             display: flex;
@@ -105,6 +113,11 @@
             color: #eee;
             font-size: 0.9rem;
             word-break: break-word;
+            animation: fadeIn 0.2s ease;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
         }
         .msg-other {
             align-self: flex-start;
@@ -135,12 +148,14 @@
             font-size: 0.95rem;
             outline: none;
             border: 1px solid rgba(255,255,255,0.06);
+            transition: 0.3s;
         }
         .input-area input::placeholder {
             color: rgba(255,255,255,0.3);
         }
         .input-area input:focus {
             border-color: rgba(255,215,0,0.3);
+            background: rgba(255,255,255,0.08);
         }
         .input-area button {
             padding: 12px 28px;
@@ -151,10 +166,20 @@
             font-weight: 600;
             cursor: pointer;
             transition: 0.3s;
+            white-space: nowrap;
         }
         .input-area button:hover {
             transform: scale(1.04);
             box-shadow: 0 4px 20px rgba(245,87,108,0.3);
+        }
+        .input-area button:active {
+            transform: scale(0.96);
+        }
+        .status {
+            color: rgba(255,255,255,0.2);
+            font-size: 0.7rem;
+            text-align: center;
+            margin-top: 8px;
         }
         .admin-panel {
             margin-top: 12px;
@@ -196,6 +221,10 @@
             color: #fff;
             cursor: pointer;
             font-size: 0.7rem;
+            transition: 0.3s;
+        }
+        .admin-panel .admin-search button:hover {
+            background: rgba(255,255,255,0.15);
         }
         .admin-panel .admin-results {
             margin-top: 8px;
@@ -210,6 +239,7 @@
             cursor: pointer;
             display: flex;
             justify-content: space-between;
+            transition: 0.2s;
         }
         .admin-panel .admin-results .result-item:hover {
             background: rgba(255,255,255,0.05);
@@ -227,9 +257,14 @@
             font-size: 0.65rem;
             cursor: pointer;
             color: #fff;
+            transition: 0.3s;
+        }
+        .admin-panel .admin-actions button:hover {
+            transform: scale(1.05);
         }
         .admin-panel .admin-actions .warn { background: rgba(255,200,0,0.3); }
         .admin-panel .admin-actions .ban { background: rgba(255,0,0,0.3); }
+        .admin-panel .admin-actions .banip { background: rgba(200,0,0,0.4); }
         .admin-panel .admin-actions .unban { background: rgba(0,200,255,0.3); }
         .admin-panel .admin-reason {
             margin-top: 6px;
@@ -242,13 +277,21 @@
             width: 100%;
             outline: none;
         }
+        .admin-panel .admin-reason:focus {
+            background: rgba(255,255,255,0.08);
+        }
+        .admin-panel .admin-status {
+            color: rgba(255,255,255,0.3);
+            font-size: 0.6rem;
+            margin-top: 4px;
+        }
     </style>
 </head>
 <body>
     <div class="app">
         <div class="header">
             <div class="logo">🦫 <span>Bober</span> Chat</div>
-            <div class="profile">
+            <div class="profile" id="profileClick">
                 <div class="avatar" id="avatarDisplay">👤</div>
                 <span class="nick" id="nickDisplay">Гость</span>
             </div>
@@ -258,14 +301,18 @@
             <span style="color:rgba(255,255,255,0.3); font-size:0.7rem;">Онлайн:</span>
         </div>
 
-        <div class="messages" id="messages"></div>
+        <div class="messages" id="messages">
+            <div style="color:rgba(255,255,255,0.2); text-align:center; padding:20px;">💬 Напиши первое сообщение!</div>
+        </div>
 
         <div class="input-area">
-            <input type="text" id="msgInput" placeholder="Напиши сообщение..." />
+            <input type="text" id="msgInput" placeholder="Напиши сообщение..." autocomplete="off" />
             <button id="sendBtn"><i class="fas fa-paper-plane"></i> Отправить</button>
         </div>
 
-        <!-- Админ-панель (видна только админам) -->
+        <div class="status" id="connectionStatus">🔄 Подключение...</div>
+
+        <!-- Админ-панель -->
         <div class="admin-panel" id="adminPanel">
             <div class="admin-title"><i class="fas fa-shield-alt"></i> Админ-панель</div>
             <div class="admin-search">
@@ -276,242 +323,263 @@
             <div class="admin-actions">
                 <button class="warn" id="adminWarn"><i class="fas fa-exclamation-triangle"></i> Варн</button>
                 <button class="ban" id="adminBan"><i class="fas fa-ban"></i> Бан</button>
-                <button class="ban" id="adminBanIP"><i class="fas fa-globe"></i> Бан IP</button>
+                <button class="banip" id="adminBanIP"><i class="fas fa-globe"></i> Бан IP</button>
                 <button class="unban" id="adminUnban"><i class="fas fa-unlock"></i> Разбан</button>
             </div>
             <input class="admin-reason" id="adminReason" placeholder="Причина..." />
-            <div id="adminStatus" style="color:rgba(255,255,255,0.3); font-size:0.6rem; margin-top:4px;"></div>
+            <div class="admin-status" id="adminStatus"></div>
         </div>
     </div>
 
     <script>
-        // ============ ПОДКЛЮЧЕНИЕ ============
-        const socket = io();
+        (function() {
+            'use strict';
 
-        // ============ DOM ============
-        const messages = document.getElementById('messages');
-        const msgInput = document.getElementById('msgInput');
-        const sendBtn = document.getElementById('sendBtn');
-        const nickDisplay = document.getElementById('nickDisplay');
-        const avatarDisplay = document.getElementById('avatarDisplay');
-        const usersList = document.getElementById('usersList');
+            // ============ ПОДКЛЮЧЕНИЕ ============
+            const socket = io();
 
-        // ============ ПЕРЕМЕННЫЕ ============
-        let currentNick = localStorage.getItem('chatNick') || 'Гость';
-        let currentAvatar = '👤';
-        let mySocketId = null;
+            // ============ DOM ============
+            const messages = document.getElementById('messages');
+            const msgInput = document.getElementById('msgInput');
+            const sendBtn = document.getElementById('sendBtn');
+            const nickDisplay = document.getElementById('nickDisplay');
+            const avatarDisplay = document.getElementById('avatarDisplay');
+            const usersList = document.getElementById('usersList');
+            const connectionStatus = document.getElementById('connectionStatus');
 
-        // ============ ИНИЦИАЛИЗАЦИЯ ============
-        nickDisplay.textContent = currentNick;
-        avatarDisplay.textContent = currentAvatar;
+            // ============ ПЕРЕМЕННЫЕ ============
+            let currentNick = localStorage.getItem('chatNick') || 'Гость';
+            let currentAvatar = '👤';
+            let isAdmin = false;
+            let selectedUserId = null;
+            let isConnected = false;
 
-        // Регистрация на сервере
-        socket.emit('register', {
-            nick: currentNick,
-            avatar: currentAvatar,
-            username: currentNick.toLowerCase().replace(/\s/g, '_')
-        });
+            // ============ ИНИЦИАЛИЗАЦИЯ ============
+            nickDisplay.textContent = currentNick;
+            avatarDisplay.textContent = currentAvatar;
 
-        // ============ ОТПРАВКА СООБЩЕНИЯ ============
-        function sendMessage() {
-            const text = msgInput.value.trim();
-            if (!text) {
-                console.log('⚠️ Пустое сообщение');
-                return;
-            }
-
-            console.log('📤 Отправка:', text);
-
-            socket.emit('sendMessage', {
-                chatId: 'main',
-                message: text,
-                nick: currentNick,
-                avatar: currentAvatar,
-                senderId: socket.id
-            });
-
-            msgInput.value = '';
-            msgInput.focus();
-        }
-
-        sendBtn.addEventListener('click', sendMessage);
-        msgInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') sendMessage();
-        });
-
-        // ============ ПОЛУЧЕНИЕ ИСТОРИИ ============
-        socket.on('chatHistory', (data) => {
-            console.log('📜 История:', data);
-            messages.innerHTML = '';
-            if (data && data.length) {
-                data.forEach(msg => addMessage(msg));
-            }
-        });
-
-        // ============ ПОЛУЧЕНИЕ НОВОГО СООБЩЕНИЯ ============
-        socket.on('newMessage', (msg) => {
-            console.log('📩 Новое сообщение:', msg);
-            addMessage(msg);
-            messages.scrollTop = messages.scrollHeight;
-        });
-
-        // ============ ДОБАВЛЕНИЕ СООБЩЕНИЯ ============
-        function addMessage(msg) {
-            const div = document.createElement('div');
-            const isSelf = msg.senderId === socket.id || msg.nick === currentNick;
-            div.className = `msg ${isSelf ? 'msg-self' : 'msg-other'}`;
-            div.innerHTML = `<span class="msg-nick">${msg.nick || 'Гость'}:</span> ${msg.message || ''}`;
-            messages.appendChild(div);
-            messages.scrollTop = messages.scrollHeight;
-        }
-
-        // ============ ОБНОВЛЕНИЕ ОНЛАЙН-ПОЛЬЗОВАТЕЛЕЙ ============
-        socket.on('onlineUsers', (users) => {
-            console.log('👥 Онлайн:', users);
-            const userList = Object.values(users);
-            if (userList.length === 0) {
-                usersList.innerHTML = '<span style="color:rgba(255,255,255,0.3); font-size:0.7rem;">Онлайн: нет</span>';
-                return;
-            }
-            usersList.innerHTML = '<span style="color:rgba(255,255,255,0.3); font-size:0.7rem;">Онлайн:</span> ' +
-                userList.map(u => `<span class="user">${u.avatar || '👤'} ${u.nick}</span>`).join('');
-        });
-
-        // ============ СОХРАНЕНИЕ НИКА ============
-        nickDisplay.addEventListener('dblclick', () => {
-            const newNick = prompt('Введите новый ник:', currentNick);
-            if (newNick && newNick.trim()) {
-                currentNick = newNick.trim();
-                nickDisplay.textContent = currentNick;
-                localStorage.setItem('chatNick', currentNick);
+            // Регистрация
+            function register() {
+                if (!isConnected) return;
                 socket.emit('register', {
                     nick: currentNick,
                     avatar: currentAvatar,
                     username: currentNick.toLowerCase().replace(/\s/g, '_')
                 });
+                console.log('📝 Регистрация:', currentNick);
             }
-        });
 
-        // ============ АДМИН-ПАНЕЛЬ ============
-        let isAdmin = false;
-        let selectedUserId = null;
+            // ============ ОТПРАВКА СООБЩЕНИЯ ============
+            function sendMessage() {
+                const text = msgInput.value.trim();
+                if (!text) {
+                    console.log('⚠️ Пустое сообщение');
+                    return;
+                }
 
-        socket.on('userRoles', (roles) => {
-            const myRole = roles[socket.id] || 'user';
-            isAdmin = myRole === 'admin';
-            document.getElementById('adminPanel').classList.toggle('active', isAdmin);
-            if (isAdmin) {
-                document.getElementById('adminStatus').textContent = '👑 Админ';
+                console.log('📤 Отправка:', text);
+
+                socket.emit('sendMessage', {
+                    chatId: 'main',
+                    message: text,
+                    nick: currentNick,
+                    avatar: currentAvatar,
+                    senderId: socket.id
+                });
+
+                msgInput.value = '';
+                msgInput.focus();
             }
-        });
 
-        // Если первый пользователь — админ
-        socket.on('roleChanged', (data) => {
-            if (data.role === 'admin') {
-                isAdmin = true;
-                document.getElementById('adminPanel').classList.add('active');
-                document.getElementById('adminStatus').textContent = '👑 Админ';
-                alert('👑 Вы стали администратором!');
+            sendBtn.addEventListener('click', sendMessage);
+            msgInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') sendMessage();
+            });
+
+            // ============ ПОЛУЧЕНИЕ ИСТОРИИ ============
+            socket.on('chatHistory', (data) => {
+                console.log('📜 История получена:', data);
+                messages.innerHTML = '';
+                if (data && data.length) {
+                    data.forEach(msg => addMessage(msg));
+                } else {
+                    messages.innerHTML = '<div style="color:rgba(255,255,255,0.2); text-align:center; padding:20px;">💬 Напиши первое сообщение!</div>';
+                }
+            });
+
+            // ============ ПОЛУЧЕНИЕ НОВОГО СООБЩЕНИЯ ============
+            socket.on('newMessage', (msg) => {
+                console.log('📩 Новое сообщение:', msg);
+                // Удаляем заглушку
+                if (messages.querySelector('.msg-placeholder')) {
+                    messages.innerHTML = '';
+                }
+                addMessage(msg);
+                messages.scrollTop = messages.scrollHeight;
+            });
+
+            // ============ ДОБАВЛЕНИЕ СООБЩЕНИЯ ============
+            function addMessage(msg) {
+                const div = document.createElement('div');
+                const isSelf = msg.senderId === socket.id;
+                div.className = `msg ${isSelf ? 'msg-self' : 'msg-other'}`;
+                div.innerHTML = `<span class="msg-nick">${msg.nick || 'Гость'}:</span> ${msg.message || ''}`;
+                messages.appendChild(div);
+                messages.scrollTop = messages.scrollHeight;
             }
-        });
 
-        // Поиск пользователя
-        document.getElementById('adminSearchBtn').addEventListener('click', () => {
-            const query = document.getElementById('adminSearch').value.trim();
-            if (!query) return;
-            socket.emit('moderation:searchUser', { query: query });
-        });
+            // ============ ОБНОВЛЕНИЕ ОНЛАЙН-ПОЛЬЗОВАТЕЛЕЙ ============
+            socket.on('onlineUsers', (users) => {
+                console.log('👥 Онлайн:', users);
+                const userList = Object.values(users);
+                if (!userList || userList.length === 0) {
+                    usersList.innerHTML = '<span style="color:rgba(255,255,255,0.3); font-size:0.7rem;">Онлайн: нет</span>';
+                    return;
+                }
+                usersList.innerHTML = '<span style="color:rgba(255,255,255,0.3); font-size:0.7rem;">Онлайн:</span> ' +
+                    userList.map(u => `<span class="user">${u.avatar || '👤'} ${u.nick}</span>`).join('');
+            });
 
-        document.getElementById('adminSearch').addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') document.getElementById('adminSearchBtn').click();
-        });
+            // ============ СТАТУС ПОДКЛЮЧЕНИЯ ============
+            socket.on('connect', () => {
+                console.log('✅ Подключено к серверу');
+                isConnected = true;
+                connectionStatus.textContent = '✅ Подключено';
+                connectionStatus.style.color = 'rgba(0,255,100,0.4)';
+                register();
+            });
 
-        socket.on('moderation:searchResults', (results) => {
-            const container = document.getElementById('adminResults');
-            if (!results || !results.length) {
-                container.innerHTML = '<div style="color:rgba(255,255,255,0.3); padding:4px;">Ничего не найдено</div>';
-                return;
-            }
-            container.innerHTML = results.map(r => `
-                <div class="result-item" data-userid="${r.socketId}">
-                    <span>${r.avatar || '👤'} ${r.nick}</span>
-                    <span style="font-size:0.5rem; opacity:0.5;">${r.ip || 'unknown'}</span>
-                </div>
-            `).join('');
+            socket.on('disconnect', () => {
+                console.log('❌ Отключено от сервера');
+                isConnected = false;
+                connectionStatus.textContent = '❌ Отключено';
+                connectionStatus.style.color = 'rgba(255,0,0,0.3)';
+            });
 
-            document.querySelectorAll('.result-item').forEach(el => {
-                el.addEventListener('click', function() {
-                    selectedUserId = this.dataset.userid;
-                    document.getElementById('adminStatus').textContent = '🎯 Выбран: ' + this.textContent.trim();
-                    document.getElementById('adminResults').innerHTML = '';
-                    document.getElementById('adminSearch').value = '';
+            socket.on('reconnect', () => {
+                console.log('🔄 Переподключено');
+                isConnected = true;
+                connectionStatus.textContent = '✅ Подключено';
+                connectionStatus.style.color = 'rgba(0,255,100,0.4)';
+                register();
+            });
+
+            // ============ СМЕНА НИКА ============
+            document.getElementById('profileClick').addEventListener('click', () => {
+                const newNick = prompt('Введите новый ник:', currentNick);
+                if (newNick && newNick.trim()) {
+                    currentNick = newNick.trim();
+                    nickDisplay.textContent = currentNick;
+                    localStorage.setItem('chatNick', currentNick);
+                    register();
+                }
+            });
+
+            // ============ АДМИН-ПАНЕЛЬ ============
+            socket.on('userRoles', (roles) => {
+                const myRole = roles[socket.id] || 'user';
+                isAdmin = myRole === 'admin';
+                document.getElementById('adminPanel').classList.toggle('active', isAdmin);
+                if (isAdmin) {
+                    document.getElementById('adminStatus').textContent = '👑 Админ';
+                }
+            });
+
+            socket.on('roleChanged', (data) => {
+                if (data.role === 'admin') {
+                    isAdmin = true;
+                    document.getElementById('adminPanel').classList.add('active');
+                    document.getElementById('adminStatus').textContent = '👑 Админ';
+                    alert('👑 Вы стали администратором!');
+                }
+            });
+
+            // Поиск пользователя
+            document.getElementById('adminSearchBtn').addEventListener('click', () => {
+                const query = document.getElementById('adminSearch').value.trim();
+                if (!query) return;
+                socket.emit('moderation:searchUser', { query: query });
+            });
+
+            document.getElementById('adminSearch').addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') document.getElementById('adminSearchBtn').click();
+            });
+
+            socket.on('moderation:searchResults', (results) => {
+                const container = document.getElementById('adminResults');
+                if (!results || !results.length) {
+                    container.innerHTML = '<div style="color:rgba(255,255,255,0.3); padding:4px;">Ничего не найдено</div>';
+                    return;
+                }
+                container.innerHTML = results.map(r => `
+                    <div class="result-item" data-userid="${r.socketId}">
+                        <span>${r.avatar || '👤'} ${r.nick}</span>
+                        <span style="font-size:0.5rem; opacity:0.5;">${r.ip || 'unknown'}</span>
+                    </div>
+                `).join('');
+
+                document.querySelectorAll('.result-item').forEach(el => {
+                    el.addEventListener('click', function() {
+                        selectedUserId = this.dataset.userid;
+                        document.getElementById('adminStatus').textContent = '🎯 Выбран пользователь';
+                        document.getElementById('adminResults').innerHTML = '';
+                        document.getElementById('adminSearch').value = '';
+                    });
                 });
             });
-        });
 
-        // Действия админа
-        document.getElementById('adminWarn').addEventListener('click', () => {
-            if (!selectedUserId) { alert('Сначала найдите пользователя'); return; }
-            const reason = document.getElementById('adminReason').value || 'Нарушение';
-            socket.emit('moderation:warn', { targetId: selectedUserId, reason: reason });
-            document.getElementById('adminStatus').textContent = '⚠️ Предупреждение отправлено';
-        });
-
-        document.getElementById('adminBan').addEventListener('click', () => {
-            if (!selectedUserId) { alert('Сначала найдите пользователя'); return; }
-            if (!confirm('Забанить этого пользователя?')) return;
-            const reason = document.getElementById('adminReason').value || 'Нарушение';
-            socket.emit('moderation:ban', { targetId: selectedUserId, reason: reason, banIP: false });
-            document.getElementById('adminStatus').textContent = '🔒 Пользователь забанен';
-        });
-
-        document.getElementById('adminBanIP').addEventListener('click', () => {
-            if (!selectedUserId) { alert('Сначала найдите пользователя'); return; }
-            if (!confirm('Забанить пользователя и его IP?')) return;
-            const reason = document.getElementById('adminReason').value || 'Нарушение (IP бан)';
-            socket.emit('moderation:ban', { targetId: selectedUserId, reason: reason, banIP: true });
-            document.getElementById('adminStatus').textContent = '🌐 Пользователь и IP забанены';
-        });
-
-        document.getElementById('adminUnban').addEventListener('click', () => {
-            if (!selectedUserId) { alert('Сначала найдите пользователя'); return; }
-            if (!confirm('Разбанить этого пользователя?')) return;
-            socket.emit('moderation:unban', { targetId: selectedUserId });
-            document.getElementById('adminStatus').textContent = '🔓 Пользователь разбанен';
-        });
-
-        // Уведомления
-        socket.on('notification', (msg) => {
-            console.log('📢', msg);
-            document.getElementById('adminStatus').textContent = msg;
-            setTimeout(() => {
-                if (document.getElementById('adminStatus').textContent === msg) {
-                    document.getElementById('adminStatus').textContent = '';
-                }
-            }, 5000);
-        });
-
-        // Проверка подключения
-        socket.on('connect', () => {
-            console.log('✅ Подключено к серверу');
-            socket.emit('register', {
-                nick: currentNick,
-                avatar: currentAvatar,
-                username: currentNick.toLowerCase().replace(/\s/g, '_')
+            // Действия админа
+            document.getElementById('adminWarn').addEventListener('click', () => {
+                if (!selectedUserId) { alert('Сначала найдите пользователя'); return; }
+                const reason = document.getElementById('adminReason').value || 'Нарушение';
+                socket.emit('moderation:warn', { targetId: selectedUserId, reason: reason });
+                document.getElementById('adminStatus').textContent = '⚠️ Предупреждение отправлено';
             });
-        });
 
-        socket.on('disconnect', () => {
-            console.log('❌ Отключено от сервера');
-        });
+            document.getElementById('adminBan').addEventListener('click', () => {
+                if (!selectedUserId) { alert('Сначала найдите пользователя'); return; }
+                if (!confirm('Забанить этого пользователя?')) return;
+                const reason = document.getElementById('adminReason').value || 'Нарушение';
+                socket.emit('moderation:ban', { targetId: selectedUserId, reason: reason, banIP: false });
+                document.getElementById('adminStatus').textContent = '🔒 Пользователь забанен';
+            });
 
-        socket.on('error', (err) => {
-            console.error('❌ Ошибка:', err);
-        });
+            document.getElementById('adminBanIP').addEventListener('click', () => {
+                if (!selectedUserId) { alert('Сначала найдите пользователя'); return; }
+                if (!confirm('Забанить пользователя и его IP?')) return;
+                const reason = document.getElementById('adminReason').value || 'Нарушение (IP бан)';
+                socket.emit('moderation:ban', { targetId: selectedUserId, reason: reason, banIP: true });
+                document.getElementById('adminStatus').textContent = '🌐 Пользователь и IP забанены';
+            });
 
-        console.log('🦫 Bober Chat запущен!');
-        console.log('👤 Твой ник:', currentNick);
-        console.log('🔌 Socket ID:', socket.id);
+            document.getElementById('adminUnban').addEventListener('click', () => {
+                if (!selectedUserId) { alert('Сначала найдите пользователя'); return; }
+                if (!confirm('Разбанить этого пользователя?')) return;
+                socket.emit('moderation:unban', { targetId: selectedUserId });
+                document.getElementById('adminStatus').textContent = '🔓 Пользователь разбанен';
+            });
+
+            // Уведомления
+            socket.on('notification', (msg) => {
+                console.log('📢', msg);
+                document.getElementById('adminStatus').textContent = msg;
+                setTimeout(() => {
+                    if (document.getElementById('adminStatus').textContent === msg) {
+                        document.getElementById('adminStatus').textContent = '';
+                    }
+                }, 5000);
+            });
+
+            // Ошибки
+            socket.on('error', (err) => {
+                console.error('❌ Ошибка:', err);
+                document.getElementById('adminStatus').textContent = '❌ ' + err;
+            });
+
+            console.log('🦫 Bober Chat запущен!');
+            console.log('👤 Твой ник:', currentNick);
+
+        })();
     </script>
 </body>
 </html>
