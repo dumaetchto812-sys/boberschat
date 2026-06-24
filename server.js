@@ -29,6 +29,7 @@ let bannedIPs = {};
 let usedUsernames = {};
 let moderationLog = [];
 let userIPs = {};
+let activeUsers = {};
 
 const ROLES = {
     ADMIN: 'admin',
@@ -145,17 +146,20 @@ function addWarning(socketId) {
 }
 
 io.on('connection', (socket) => {
+    // Получаем реальный IP
     const clientIP = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address || 'unknown';
     userIPs[socket.id] = clientIP;
     
     console.log('🟢 Подключен:', socket.id, 'IP:', clientIP);
 
+    // Проверка на IP-бан
     if (isIPBanned(clientIP)) {
         socket.emit('banned', { reason: bannedIPs[clientIP] || 'Ваш IP забанен', until: Date.now() + 86400000 });
         socket.disconnect();
         return;
     }
 
+    // Проверка на бан пользователя
     if (isBanned(socket.id)) {
         socket.emit('banned', { reason: bannedUsers[socket.id]?.reason || 'Вы забанены', until: bannedUsers[socket.id]?.until });
         socket.disconnect();
@@ -163,18 +167,26 @@ io.on('connection', (socket) => {
     }
 
     socket.on('register', (data) => {
-        const username = data.username || 'гость';
+        console.log('📝 Регистрация:', data);
+        
+        // Проверка данных
+        const username = (data.username || 'гость').toLowerCase().replace(/[^a-z0-9_]/g, '');
+        const nick = data.nick || 'Гость';
+        
+        // Проверка на занятость юзернейма
         if (usedUsernames[username] && usedUsernames[username] !== socket.id) {
             socket.emit('notification', '❌ Этот юзернейм уже занят!');
             socket.emit('usernameTaken', { username: username });
             return;
         }
         
+        // Регистрируем юзернейм
         if (usedUsernames[username] === socket.id || !usedUsernames[username]) {
             usedUsernames[username] = socket.id;
         }
         
-        socket.data.nick = data.nick || 'Гость';
+        // Сохраняем данные пользователя
+        socket.data.nick = nick;
         socket.data.username = username;
         socket.data.avatar = data.avatar || '👤';
         socket.data.status = data.status || 'В сети';
@@ -182,22 +194,32 @@ io.on('connection', (socket) => {
         socket.data.banner = data.banner || '';
         socket.data.color = data.color || '#f093fb';
         socket.data.ip = clientIP;
+        socket.data.registered = true;
         
+        // Назначаем роль
         if (!userRoles[socket.id]) {
             const sockets = io.sockets.sockets;
             const existingUsers = Array.from(sockets.keys()).filter(id => id !== socket.id);
-            if (existingUsers.length === 0) {
+            // Проверяем, есть ли уже админы
+            let hasAdmin = false;
+            for (const id of existingUsers) {
+                if (userRoles[id] === ROLES.ADMIN) {
+                    hasAdmin = true;
+                    break;
+                }
+            }
+            if (!hasAdmin) {
                 userRoles[socket.id] = ROLES.ADMIN;
                 socket.emit('roleChanged', { role: ROLES.ADMIN });
-                console.log(`👑 ${socket.data.nick} стал первым админом!`);
+                console.log(`👑 ${nick} стал первым админом!`);
             } else {
                 userRoles[socket.id] = ROLES.USER;
             }
         }
         
         userProfiles[socket.id] = {
-            nick: socket.data.nick,
-            username: socket.data.username,
+            nick: nick,
+            username: username,
             avatar: socket.data.avatar,
             status: socket.data.status,
             bio: socket.data.bio,
@@ -207,12 +229,26 @@ io.on('connection', (socket) => {
             ip: clientIP
         };
         
-        console.log(`👤 ${socket.data.nick} (@${socket.data.username}) зарегистрирован [${userRoles[socket.id]}] IP: ${clientIP}`);
+        activeUsers[socket.id] = {
+            nick: nick,
+            username: username,
+            connected: true
+        };
+        
+        console.log(`👤 ${nick} (@${username}) зарегистрирован [${userRoles[socket.id]}] IP: ${clientIP}`);
+        
+        // Отправляем данные всем
         io.emit('onlineUsers', getOnlineUsers());
         io.emit('userProfiles', userProfiles);
         io.emit('userRoles', userRoles);
         io.emit('moderationLog', moderationLog);
         io.emit('bannedUsers', bannedUsers);
+        
+        // Подключаем к чату
+        socket.join('main');
+        if (messages['main']) {
+            socket.emit('chatHistory', { chatId: 'main', messages: messages['main'] });
+        }
     });
 
     socket.on('claimAdmin', (key) => {
@@ -235,6 +271,7 @@ io.on('connection', (socket) => {
         }
         socket.join(chatId);
         socket.data.currentChat = chatId;
+        console.log(`📌 ${socket.data.nick} присоединился к чату ${chatId}`);
         if (messages[chatId]) {
             socket.emit('chatHistory', { chatId: chatId, messages: messages[chatId] });
         } else {
@@ -244,17 +281,32 @@ io.on('connection', (socket) => {
     });
 
     socket.on('sendMessage', (data) => {
+        console.log('📨 Получено сообщение от', socket.data.nick, ':', data);
+        
         if (isBanned(socket.id)) {
             socket.emit('banned', { reason: bannedUsers[socket.id]?.reason || 'Вы забанены' });
             return;
         }
+        
+        if (!socket.data.registered) {
+            console.log('⚠️ Пользователь не зарегистрирован');
+            return;
+        }
+        
         try {
-            const { chatId, message, nick, username, avatar, media, targetUserId } = data;
+            const { chatId, message, media, targetUserId } = data;
+            
+            if (!message && !media) {
+                console.log('⚠️ Пустое сообщение');
+                return;
+            }
+            
+            // Фильтр плохих слов
             const badWords = ['мат', 'ругательство', 'плохое_слово'];
-            let filteredMessage = message;
+            let filteredMessage = message || '';
             let isBad = false;
             badWords.forEach(word => {
-                if (message.toLowerCase().includes(word.toLowerCase())) {
+                if (message && message.toLowerCase().includes(word.toLowerCase())) {
                     filteredMessage = filteredMessage.replace(new RegExp(word, 'gi'), '***');
                     isBad = true;
                 }
@@ -264,27 +316,35 @@ io.on('connection', (socket) => {
                 addWarning(socket.id);
                 return;
             }
+            
             const msgData = {
                 id: Date.now().toString(),
                 chatId: chatId || 'main',
                 senderId: socket.id,
-                nick: nick || 'Гость',
-                username: username || '',
+                nick: socket.data.nick || 'Гость',
+                username: socket.data.username || '',
                 message: filteredMessage,
-                avatar: avatar || '👤',
+                avatar: socket.data.avatar || '👤',
                 media_url: media?.url || null,
                 media_type: media?.type || null,
                 created_at: new Date().toISOString(),
                 isDeleted: false
             };
+            
+            console.log('📨 Сохранение сообщения:', msgData);
+            
             if (!messages[chatId]) messages[chatId] = [];
             messages[chatId].push(msgData);
+            
+            console.log(`📨 Отправка в чат ${chatId}`);
             io.to(chatId).emit('newMessage', msgData);
+            
             if (targetUserId && chatId.startsWith('dm_')) {
+                console.log(`📨 Отправка личного сообщения пользователю ${targetUserId}`);
                 io.to(targetUserId).emit('newMessage', msgData);
             }
         } catch (err) {
-            console.error('Ошибка отправки:', err);
+            console.error('❌ Ошибка отправки:', err);
             socket.emit('error', 'Не удалось отправить сообщение');
         }
     });
@@ -342,7 +402,7 @@ io.on('connection', (socket) => {
         socket.emit('moderation:searchResults', results);
     });
 
-    // ============ ЗВОНКИ (упрощенные, без PeerJS) ============
+    // ============ ЗВОНКИ ============
     socket.on('startCall', (data) => {
         if (isBanned(socket.id)) return;
         const { chatId } = data;
@@ -423,6 +483,7 @@ io.on('connection', (socket) => {
         }
         delete userProfiles[socket.id];
         delete userIPs[socket.id];
+        delete activeUsers[socket.id];
         for (const chatId in callRooms) {
             if (callRooms[chatId].participants.includes(socket.id)) {
                 callRooms[chatId].participants = callRooms[chatId].participants.filter(id => id !== socket.id);
@@ -443,7 +504,7 @@ function getOnlineUsers() {
     const users = {};
     const sockets = io.sockets.sockets;
     for (const [id, socket] of sockets) {
-        if (socket.data && socket.data.nick) {
+        if (socket.data && socket.data.nick && socket.data.registered) {
             users[id] = {
                 socketId: id,
                 nick: socket.data.nick,
