@@ -3,20 +3,10 @@ const http = require('http');
 const socketIo = require('socket.io');
 const cors = require('cors');
 const path = require('path');
-const { ExpressPeerServer } = require('peerjs');
-require('dotenv').config();
 
 const app = express();
 const server = http.createServer(app);
 
-// ============ PEERJS ============
-const peerServer = ExpressPeerServer(server, {
-    debug: true,
-    path: '/peerjs'
-});
-app.use('/peerjs', peerServer);
-
-// ============ SOCKET.IO ============
 const io = socketIo(server, {
     cors: {
         origin: "*",
@@ -186,7 +176,6 @@ io.on('connection', (socket) => {
         
         socket.data.nick = data.nick || 'Гость';
         socket.data.username = username;
-        socket.data.peerId = data.peerId;
         socket.data.avatar = data.avatar || '👤';
         socket.data.status = data.status || 'В сети';
         socket.data.bio = data.bio || '';
@@ -214,7 +203,6 @@ io.on('connection', (socket) => {
             bio: socket.data.bio,
             banner: socket.data.banner,
             color: socket.data.color,
-            peerId: socket.data.peerId,
             role: userRoles[socket.id],
             ip: clientIP
         };
@@ -354,10 +342,10 @@ io.on('connection', (socket) => {
         socket.emit('moderation:searchResults', results);
     });
 
-    // ============ ЗВОНКИ ============
+    // ============ ЗВОНКИ (упрощенные, без PeerJS) ============
     socket.on('startCall', (data) => {
         if (isBanned(socket.id)) return;
-        const { chatId, peerId } = data;
+        const { chatId } = data;
         const nick = socket.data.nick || 'Гость';
         if (callRooms[chatId] && callRooms[chatId].participants.length > 0) {
             socket.emit('error', 'Звонок уже активен');
@@ -365,12 +353,11 @@ io.on('connection', (socket) => {
         }
         callRooms[chatId] = {
             participants: [socket.id],
-            peerId: peerId,
             startedBy: socket.id,
             startedByNick: nick
         };
         io.to(chatId).emit('callStarted', {
-            chatId, peerId,
+            chatId,
             startedBy: socket.id,
             startedByNick: nick,
             participants: callRooms[chatId].participants
@@ -379,23 +366,20 @@ io.on('connection', (socket) => {
 
     socket.on('joinCall', (data) => {
         if (isBanned(socket.id)) return;
-        const { chatId, peerId } = data;
+        const { chatId } = data;
         const nick = socket.data.nick || 'Гость';
         if (callRooms[chatId]) {
             if (!callRooms[chatId].participants.includes(socket.id)) {
                 callRooms[chatId].participants.push(socket.id);
             }
-            if (peerId) callRooms[chatId].peerId = peerId;
             io.to(chatId).emit('callParticipantJoined', {
                 chatId,
                 participantId: socket.id,
                 nick,
-                peerId,
                 participants: callRooms[chatId].participants
             });
             socket.emit('callState', {
                 chatId,
-                peerId: callRooms[chatId].peerId,
                 participants: callRooms[chatId].participants,
                 startedBy: callRooms[chatId].startedBy,
                 startedByNick: callRooms[chatId].startedByNick
@@ -464,7 +448,6 @@ function getOnlineUsers() {
                 socketId: id,
                 nick: socket.data.nick,
                 username: socket.data.username || '',
-                peerId: socket.data.peerId,
                 avatar: socket.data.avatar || '👤',
                 status: isBanned(id) ? 'Забанен' : (socket.data.status || 'В сети'),
                 role: userRoles[id] || ROLES.USER,
