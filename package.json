@@ -1,7 +1,7 @@
 {
   "name": "bober-chat",
-  "version": "1.0.0",
-  "description": "Чат с общими звонками",
+  "version": "2.0.0",
+  "description": "Bober Chat с админ-панелью",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
@@ -11,6 +11,7 @@
     "socket.io": "^4.6.1",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
+    "peer": "^1.0.4",
     "peerjs": "^1.5.1"
   }
 }
