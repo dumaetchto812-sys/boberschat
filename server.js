@@ -3,7 +3,7 @@ const http = require('http');
 const socketIo = require('socket.io');
 const cors = require('cors');
 const path = require('path');
-const { ExpressPeerServer } = require('peer');
+const { ExpressPeerServer } = require('peerjs');
 require('dotenv').config();
 
 const app = express();
@@ -52,7 +52,6 @@ const SETTINGS = {
     adminKey: 'bober_admin_2024'
 };
 
-// ============ ФУНКЦИИ ============
 function getUserRole(socketId) {
     return userRoles[socketId] || ROLES.USER;
 }
@@ -155,15 +154,12 @@ function addWarning(socketId) {
     }
 }
 
-// ============ SOCKET.IO ============
 io.on('connection', (socket) => {
-    // Получаем IP
     const clientIP = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address || 'unknown';
     userIPs[socket.id] = clientIP;
     
     console.log('🟢 Подключен:', socket.id, 'IP:', clientIP);
 
-    // Проверка на IP-бан
     if (isIPBanned(clientIP)) {
         socket.emit('banned', { reason: bannedIPs[clientIP] || 'Ваш IP забанен', until: Date.now() + 86400000 });
         socket.disconnect();
@@ -177,7 +173,6 @@ io.on('connection', (socket) => {
     }
 
     socket.on('register', (data) => {
-        // Проверка на занятость юзернейма
         const username = data.username || 'гость';
         if (usedUsernames[username] && usedUsernames[username] !== socket.id) {
             socket.emit('notification', '❌ Этот юзернейм уже занят!');
