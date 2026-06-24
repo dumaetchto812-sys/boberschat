@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bober Chat</title>
+    <title>Bober Chat 🦫</title>
     <script src="/socket.io/socket.io.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
@@ -347,6 +347,21 @@
         .user-search .search-results .search-item .s-avatar { font-size: 1rem; }
         .user-search .search-results .search-item .s-nick { flex: 1; }
         .user-search .search-results .search-item .s-username { font-size: 0.6rem; opacity: 0.5; }
+        .user-search .search-results .search-item .s-dm-btn {
+            background: var(--custom-accent);
+            border: none;
+            color: white;
+            border-radius: 12px;
+            padding: 2px 10px;
+            font-size: 0.6rem;
+            cursor: pointer;
+            opacity: 0.5;
+            transition: 0.3s;
+        }
+        .user-search .search-results .search-item .s-dm-btn:hover {
+            opacity: 1;
+            transform: scale(1.05);
+        }
 
         .chat-list {
             display: flex;
@@ -478,6 +493,22 @@
             font-size: 0.6rem;
             opacity: 0.5;
             color: var(--custom-accent);
+        }
+        .online-user .user-dm-btn {
+            background: var(--custom-accent);
+            border: none;
+            color: white;
+            border-radius: 12px;
+            padding: 2px 8px;
+            font-size: 0.55rem;
+            cursor: pointer;
+            opacity: 0.4;
+            transition: 0.3s;
+            margin-left: 4px;
+        }
+        .online-user .user-dm-btn:hover {
+            opacity: 1;
+            transform: scale(1.1);
         }
 
         /* ===== АДМИН-ПАНЕЛЬ ===== */
@@ -748,7 +779,11 @@
             cursor: default;
             position: relative;
         }
-        .brand .bober-icon { font-size: 1.8rem; line-height: 1; }
+        .brand .bober-icon { font-size: 2rem; line-height: 1; animation: bobber 2s ease-in-out infinite; }
+        @keyframes bobber {
+            0%, 100% { transform: translateY(0px) rotate(0deg); }
+            50% { transform: translateY(-5px) rotate(5deg); }
+        }
         .brand .brand-text { transition: color 0.3s; position: relative; }
         .brand .chat-title {
             font-size: 0.8rem;
@@ -1725,7 +1760,7 @@
             </div>
             
             <div class="user-search" id="userSearch">
-                <input type="text" id="searchInput" placeholder="🔍 Найти пользователя..." autocomplete="off">
+                <input type="text" id="searchInput" placeholder="🔍 Найти пользователя по @юзернейм..." autocomplete="off">
                 <div class="search-results" id="searchResults"></div>
             </div>
             
@@ -1980,10 +2015,8 @@
     </div>
 
     <script>
-        // Здесь будет полный JavaScript код (он очень большой, продолжение следует...)
-        // Я продолжу в следующем сообщении, так как код слишком большой для одного ответа
-        console.log('🦫 Bober Chat загружается...');
-                (function() {
+        // ============ ПОЛНЫЙ JAVASCRIPT КОД ============
+        (function() {
             'use strict';
 
             // ============ КАНВАС ============
@@ -2057,7 +2090,6 @@
                 editToggleBtn.querySelector('i').className = editMode ? 'fas fa-check' : 'fas fa-pencil-alt';
                 editToggleBtn.querySelector('.tooltip').textContent = editMode ? 'Выйти из режима' : 'Редактировать интерфейс';
                 editModeHint.classList.toggle('active', editMode);
-                
                 if (editMode) {
                     document.body.style.cursor = 'grab';
                 } else {
@@ -2082,19 +2114,17 @@
                 editModeHint.classList.remove('active');
             });
 
-            // ============ ПЕРЕТАСКИВАНИЕ ЭЛЕМЕНТОВ ============
+            // ============ ПЕРЕТАСКИВАНИЕ ============
             document.addEventListener('mousedown', (e) => {
                 if (!editMode) return;
                 if (e.target.closest('button') || e.target.closest('input') || e.target.closest('.chat-close')) return;
                 const target = e.target.closest('.chat-item, .online-user, .brand, .sidebar-title, .profile-area');
                 if (!target) return;
                 if (target.classList.contains('chat-item') && target.classList.contains('active')) return;
-                
                 draggedElement = target;
                 const rect = target.getBoundingClientRect();
                 dragOffsetX = e.clientX - rect.left;
                 dragOffsetY = e.clientY - rect.top;
-                
                 target.classList.add('dragging');
                 target.style.position = 'fixed';
                 target.style.zIndex = '9999';
@@ -2113,7 +2143,6 @@
                 const y = e.clientY - dragOffsetY;
                 draggedElement.style.left = x + 'px';
                 draggedElement.style.top = y + 'px';
-                
                 const dropTarget = document.elementFromPoint(e.clientX, e.clientY);
                 document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
                 if (dropTarget) {
@@ -2131,7 +2160,6 @@
                 if (dropTarget) {
                     targetContainer = dropTarget.closest('.chat-list, #onlineUsers, .header, .sidebar, .chat-app');
                 }
-                
                 draggedElement.classList.remove('dragging');
                 draggedElement.style.position = '';
                 draggedElement.style.zIndex = '';
@@ -2143,7 +2171,6 @@
                 draggedElement.style.transform = '';
                 document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
                 document.body.style.cursor = 'grab';
-                
                 if (targetContainer && targetContainer !== draggedElement.parentElement) {
                     const isValidTarget = (
                         (targetContainer.classList.contains('chat-list') && draggedElement.classList.contains('chat-item')) ||
@@ -2517,7 +2544,7 @@
                 return null;
             }
 
-            // ============ ПОИСК (UI) ============
+            // ============ ПОИСК (UI) С КНОПКОЙ НАПИСАТЬ ============
             function performSearch(query) {
                 const q = query.toLowerCase().trim();
                 const results = [];
@@ -2540,9 +2567,21 @@
                         <span class="s-avatar">${r.profile.avatar || '👤'}</span>
                         <span class="s-nick">${r.profile.nick}</span>
                         <span class="s-username">@${r.profile.username || 'пользователь'}</span>
+                        <button class="s-dm-btn" data-userid="${r.userId}"><i class="fas fa-comment"></i> Написать</button>
                     </div>
                 `).join('');
                 searchResults.classList.add('active');
+                document.querySelectorAll('.search-item .s-dm-btn').forEach(el => {
+                    el.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        const userId = this.dataset.userid;
+                        if (userId && userProfiles[userId]) {
+                            searchResults.classList.remove('active');
+                            searchInput.value = '';
+                            openPrivateChat(userId);
+                        }
+                    });
+                });
                 document.querySelectorAll('.search-item').forEach(el => {
                     el.addEventListener('click', function() {
                         const userId = this.dataset.userid;
@@ -3042,7 +3081,7 @@
                 updateOnlineUsers();
             });
 
-            // ============ ОНЛАЙН-ПОЛЬЗОВАТЕЛИ ============
+            // ============ ОНЛАЙН-ПОЛЬЗОВАТЕЛИ С КНОПКОЙ НАПИСАТЬ ============
             function updateOnlineUsers() {
                 const users = Object.values(onlineUsers).filter(u => u.socketId !== socket.id);
                 if (users.length === 0) {
@@ -3063,9 +3102,19 @@
                             <span class="user-nick">${u.nick}</span>
                             <span class="user-username">${username}</span>
                             <span class="status-dot ${dotClass}"></span>
+                            <button class="user-dm-btn" data-userid="${u.socketId}"><i class="fas fa-comment"></i></button>
                         </div>
                     `;
                 }).join('');
+                document.querySelectorAll('.online-user .user-dm-btn').forEach(el => {
+                    el.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        const userId = this.dataset.userid;
+                        if (userId && userProfiles[userId]) {
+                            openPrivateChat(userId);
+                        }
+                    });
+                });
                 document.querySelectorAll('.online-user').forEach(el => {
                     el.addEventListener('click', function() {
                         const userId = this.dataset.userid;
@@ -3171,7 +3220,6 @@
 
             socket.on('notification', (msg) => {
                 console.log('📢', msg);
-                // Можно добавить всплывающее уведомление
                 const notif = document.createElement('div');
                 notif.style.cssText = 'position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.8);color:#fff;padding:12px 24px;border-radius:12px;z-index:9999;font-size:0.9rem;border:1px solid var(--custom-accent);';
                 notif.textContent = msg;
