@@ -7,6 +7,7 @@
     <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
+        /* ===== ВСЕ СТИЛИ ИЗ ПРЕДЫДУЩЕЙ ВЕРСИИ ===== */
         * {
             margin: 0;
             padding: 0;
@@ -825,6 +826,7 @@
             display: inline-block;
         }
 
+        /* ===== ТЕМЫ ===== */
         .app-light .sidebar {
             background: rgba(255, 255, 255, 0.5);
             border-color: rgba(0,0,0,0.05);
@@ -1502,7 +1504,6 @@
             let messageCount = 0;
             let onlineUsers = {};
             let userProfiles = {};
-            let viewingUserId = null;
 
             // ============ ИНИЦИАЛИЗАЦИЯ ============
             nickDisplay.textContent = currentNick;
@@ -1523,6 +1524,7 @@
                 if (editColor) editColor.value = color;
             }
 
+            // ============ РЕГИСТРАЦИЯ ============
             function registerUser() {
                 socket.emit('register', {
                     nick: currentNick,
@@ -1599,7 +1601,6 @@
                 if (userId === null || userId === socket.id) {
                     showMyProfile();
                 } else if (userProfiles[userId]) {
-                    viewingUserId = userId;
                     const data = userProfiles[userId];
                     profileNameBig.textContent = data.nick || 'Гость';
                     profileUsernameBig.textContent = '@' + (data.username || 'пользователь');
@@ -1802,9 +1803,15 @@
                 return null;
             }
 
+            // ============ ОТПРАВКА СООБЩЕНИЯ ============
             function sendMessage() {
                 const text = msgInput.value.trim();
-                if (!text) return;
+                if (!text) {
+                    console.log('⚠️ Пустое сообщение');
+                    return;
+                }
+
+                console.log('📤 Отправка:', text);
 
                 const msgData = {
                     chatId: currentChat,
@@ -1817,6 +1824,7 @@
 
                 socket.emit('sendMessage', msgData);
                 msgInput.value = '';
+                msgInput.focus();
             }
 
             sendBtn.addEventListener('click', sendMessage);
@@ -1954,7 +1962,6 @@
             } catch(e) {}
 
             // ============ ЗВОНКИ ============
-            // Упрощённые звонки через Socket.IO (без PeerJS)
             let callActive = false;
 
             callBtn.addEventListener('click', function() {
