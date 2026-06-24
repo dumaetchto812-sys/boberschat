@@ -89,14 +89,12 @@
 
         /* ===== РЕЖИМ РЕДАКТИРОВАНИЯ ===== */
         .edit-mode .chat-item,
-        .edit-mode .online-user,
         .edit-mode .brand,
         .edit-mode .sidebar-title,
         .edit-mode .profile-area {
             cursor: grab !important;
         }
         .edit-mode .chat-item:hover,
-        .edit-mode .online-user:hover,
         .edit-mode .brand:hover,
         .edit-mode .sidebar-title:hover,
         .edit-mode .profile-area:hover {
@@ -357,6 +355,7 @@
             cursor: pointer;
             opacity: 0.5;
             transition: 0.3s;
+            margin-left: 4px;
         }
         .user-search .search-results .search-item .s-dm-btn:hover {
             opacity: 1;
@@ -435,80 +434,6 @@
             font-size: 0.6rem;
             opacity: 0.3;
             cursor: grab;
-        }
-
-        .call-section {
-            margin-top: 16px;
-            padding-top: 16px;
-            border-top: 1px solid var(--custom-border);
-        }
-
-        #onlineUsers {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-        }
-
-        .online-user {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 6px 10px;
-            border-radius: 10px;
-            background: rgba(255,255,255,0.03);
-            color: var(--custom-text);
-            opacity: 0.8;
-            font-size: 0.85rem;
-            transition: 0.3s;
-            cursor: pointer;
-            position: relative;
-        }
-        .online-user:hover {
-            background: rgba(255,255,255,0.08);
-            opacity: 1;
-            transform: scale(1.02);
-        }
-        .online-user .status-dot {
-            width: 6px;
-            height: 6px;
-            border-radius: 50%;
-            margin-left: auto;
-            flex-shrink: 0;
-        }
-        .online-user .status-dot.online { background: #00ff88; animation: pulse-dot 2s infinite; }
-        .online-user .status-dot.away { background: #ffaa00; }
-        .online-user .status-dot.do-not-disturb { background: #ff4444; }
-        @keyframes pulse-dot {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.3; }
-        }
-        .online-user .user-avatar { font-size: 1.2rem; }
-        .online-user .user-nick {
-            flex: 1;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-        .online-user .user-username {
-            font-size: 0.6rem;
-            opacity: 0.5;
-            color: var(--custom-accent);
-        }
-        .online-user .user-dm-btn {
-            background: var(--custom-accent);
-            border: none;
-            color: white;
-            border-radius: 12px;
-            padding: 2px 8px;
-            font-size: 0.55rem;
-            cursor: pointer;
-            opacity: 0.4;
-            transition: 0.3s;
-            margin-left: 4px;
-        }
-        .online-user .user-dm-btn:hover {
-            opacity: 1;
-            transform: scale(1.1);
         }
 
         /* ===== АДМИН-ПАНЕЛЬ ===== */
@@ -779,7 +704,12 @@
             cursor: default;
             position: relative;
         }
-        .brand .bober-icon { font-size: 2rem; line-height: 1; animation: bobber 2s ease-in-out infinite; }
+        .brand .bober-icon { 
+            font-size: 2rem; 
+            line-height: 1; 
+            animation: bobber 2s ease-in-out infinite;
+            display: inline-block;
+        }
         @keyframes bobber {
             0%, 100% { transform: translateY(0px) rotate(0deg); }
             50% { transform: translateY(-5px) rotate(5deg); }
@@ -1773,17 +1703,6 @@
                 </div>
             </div>
 
-            <div class="call-section">
-                <div class="sidebar-title">
-                    <i class="fas fa-users"></i> 
-                    <span class="editable-text" data-target="usersTitle">Пользователи</span>
-                    <span class="edit-indicator">✏️</span>
-                </div>
-                <div id="onlineUsers">
-                    <div style="color: rgba(255,255,255,0.3); font-size: 0.75rem; padding: 4px;">Нет онлайн-пользователей</div>
-                </div>
-            </div>
-
             <!-- ===== РАСШИРЕННАЯ АДМИН-ПАНЕЛЬ ===== -->
             <div id="adminPanelAdvanced">
                 <div class="sidebar-title"><i class="fas fa-user-cog"></i> Админ-панель</div>
@@ -2118,7 +2037,7 @@
             document.addEventListener('mousedown', (e) => {
                 if (!editMode) return;
                 if (e.target.closest('button') || e.target.closest('input') || e.target.closest('.chat-close')) return;
-                const target = e.target.closest('.chat-item, .online-user, .brand, .sidebar-title, .profile-area');
+                const target = e.target.closest('.chat-item, .brand, .sidebar-title, .profile-area');
                 if (!target) return;
                 if (target.classList.contains('chat-item') && target.classList.contains('active')) return;
                 draggedElement = target;
@@ -2146,7 +2065,7 @@
                 const dropTarget = document.elementFromPoint(e.clientX, e.clientY);
                 document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
                 if (dropTarget) {
-                    const container = dropTarget.closest('.chat-list, #onlineUsers, .header, .sidebar, .chat-app');
+                    const container = dropTarget.closest('.chat-list, .header, .sidebar, .chat-app');
                     if (container && container !== draggedElement && !container.contains(draggedElement)) {
                         container.classList.add('drag-over');
                     }
@@ -2158,7 +2077,7 @@
                 const dropTarget = document.elementFromPoint(e.clientX, e.clientY);
                 let targetContainer = null;
                 if (dropTarget) {
-                    targetContainer = dropTarget.closest('.chat-list, #onlineUsers, .header, .sidebar, .chat-app');
+                    targetContainer = dropTarget.closest('.chat-list, .header, .sidebar, .chat-app');
                 }
                 draggedElement.classList.remove('dragging');
                 draggedElement.style.position = '';
@@ -2174,7 +2093,6 @@
                 if (targetContainer && targetContainer !== draggedElement.parentElement) {
                     const isValidTarget = (
                         (targetContainer.classList.contains('chat-list') && draggedElement.classList.contains('chat-item')) ||
-                        (targetContainer.id === 'onlineUsers' && draggedElement.classList.contains('online-user')) ||
                         (targetContainer.classList.contains('header') && draggedElement.classList.contains('brand')) ||
                         (targetContainer.classList.contains('header') && draggedElement.classList.contains('profile-area')) ||
                         (targetContainer.classList.contains('sidebar') && draggedElement.classList.contains('brand'))
@@ -2265,7 +2183,6 @@
                     'brandName': 'Название приложения',
                     'chatTitle': 'Название чата',
                     'sidebarTitle': 'Название раздела "Чаты"',
-                    'usersTitle': 'Название раздела "Пользователи"',
                     'mainChatName': 'Название общего чата'
                 };
                 textEditLabel.textContent = labels[target] || 'Редактировать текст';
@@ -2400,7 +2317,6 @@
             const avatarImg = document.getElementById('avatarImg');
             const chatList = document.getElementById('chatList');
             const chatBadge = document.getElementById('chatBadge');
-            const onlineUsersDiv = document.getElementById('onlineUsers');
             const profileArea = document.getElementById('profileArea');
             const chatTitleEl = document.getElementById('chatTitle');
 
@@ -2544,7 +2460,7 @@
                 return null;
             }
 
-            // ============ ПОИСК (UI) С КНОПКОЙ НАПИСАТЬ ============
+            // ============ ПОИСК (UI) ============
             function performSearch(query) {
                 const q = query.toLowerCase().trim();
                 const results = [];
@@ -2622,8 +2538,7 @@
                     <span class="chat-badge">0</span>
                     <button class="chat-close" title="Закрыть чат"><i class="fas fa-times"></i></button>
                 `;
-                const callSection = document.querySelector('.call-section');
-                chatList.insertBefore(chatItem, callSection);
+                chatList.appendChild(chatItem);
                 const closeBtn = chatItem.querySelector('.chat-close');
                 closeBtn.addEventListener('click', (e) => {
                     e.stopPropagation();
@@ -2970,7 +2885,6 @@
                 profileStatus.textContent = statusInfo.text;
                 profileStatus.style.color = statusInfo.color;
                 profileBio.textContent = currentBio || 'Пользователь еще не заполнил описание';
-                updateOnlineUsers();
                 profileOverlay.classList.remove('active');
             }
 
@@ -3059,7 +2973,6 @@
 
             socket.on('onlineUsers', (users) => {
                 onlineUsers = users;
-                updateOnlineUsers();
             });
 
             socket.on('userProfiles', (profiles) => {
@@ -3078,50 +2991,7 @@
             socket.on('userDisconnected', (socketId) => {
                 delete onlineUsers[socketId];
                 delete userProfiles[socketId];
-                updateOnlineUsers();
             });
-
-            // ============ ОНЛАЙН-ПОЛЬЗОВАТЕЛИ С КНОПКОЙ НАПИСАТЬ ============
-            function updateOnlineUsers() {
-                const users = Object.values(onlineUsers).filter(u => u.socketId !== socket.id);
-                if (users.length === 0) {
-                    onlineUsersDiv.innerHTML = '<div style="color: rgba(255,255,255,0.3); font-size: 0.75rem; padding: 4px;">Нет онлайн-пользователей</div>';
-                    return;
-                }
-                onlineUsersDiv.innerHTML = users.map(u => {
-                    const statusMap = {
-                        'В сети': 'online',
-                        'Отошел': 'away',
-                        'Не беспокоить': 'do-not-disturb'
-                    };
-                    const dotClass = statusMap[u.status] || 'online';
-                    const username = u.username ? '@' + u.username : '';
-                    return `
-                        <div class="online-user" data-userid="${u.socketId}">
-                            <span class="user-avatar">${u.avatar || '👤'}</span>
-                            <span class="user-nick">${u.nick}</span>
-                            <span class="user-username">${username}</span>
-                            <span class="status-dot ${dotClass}"></span>
-                            <button class="user-dm-btn" data-userid="${u.socketId}"><i class="fas fa-comment"></i></button>
-                        </div>
-                    `;
-                }).join('');
-                document.querySelectorAll('.online-user .user-dm-btn').forEach(el => {
-                    el.addEventListener('click', function(e) {
-                        e.stopPropagation();
-                        const userId = this.dataset.userid;
-                        if (userId && userProfiles[userId]) {
-                            openPrivateChat(userId);
-                        }
-                    });
-                });
-                document.querySelectorAll('.online-user').forEach(el => {
-                    el.addEventListener('click', function() {
-                        const userId = this.dataset.userid;
-                        if (userId && userProfiles[userId]) openProfile(userId);
-                    });
-                });
-            }
 
             // ============ АДМИНКА ============
             socket.on('userRoles', (roles) => {
