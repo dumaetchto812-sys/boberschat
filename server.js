@@ -109,72 +109,111 @@ io.on('connection', (socket) => {
             console.log(`📨 ${msg.nick} -> общий чат: ${msg.message.substring(0, 30)}`);
         }
 
-        // ЛИЧНЫЙ ЧАТ
-        else if (chatId && chatId.startsWith('dm_')) {
-            const parts = chatId.split('_');
-            const targetId = parts[1] === socket.id ? parts[2] : parts[1];
-            
-            console.log(`📨 Попытка ЛС от ${socket.id} к ${targetId}`);
-            
-            if (!users[targetId]) {
-                socket.emit('notification', '❌ Пользователь не найден или офлайн');
-                return;
-            }
-
-            if (moderations.bans[targetId]) {
-                socket.emit('notification', '❌ Пользователь забанен');
-                return;
-            }
-
-            const chatKey = getPrivateChatKey(socket.id, targetId);
-            
-            if (!privateChats[chatKey]) {
-                privateChats[chatKey] = [];
-            }
-            privateChats[chatKey].push(msg);
-            if (privateChats[chatKey].length > 1000) {
-                privateChats[chatKey] = privateChats[chatKey].slice(-1000);
-            }
-
-            io.to(socket.id).emit('newMessage', { ...msg, chatId: chatKey });
-            
-            if (users[targetId]) {
-                io.to(targetId).emit('newMessage', { ...msg, chatId: chatKey });
-                console.log(`📨 ${msg.nick} -> ${users[targetId].nick}: ${msg.message.substring(0, 30)}`);
-            } else {
-                console.log(`📨 ${msg.nick} -> офлайн: ${msg.message.substring(0, 30)}`);
-            }
-        }
+// ============ ЛИЧНЫЕ ЧАТЫ ============
+function openPrivateChat(userId) {
+    const userData = findUserById(userId);
+    if (!userData) {
+        alert('Пользователь не найден!');
+        return;
+    }
+    const profile = userData.profile;
+    const chatId = 'dm_' + userId;
+    
+    console.log('💬 Открываем ЛС с:', userId, 'чат:', chatId);
+    
+    // Проверяем, существует ли уже такой чат в списке
+    let existingItem = document.querySelector(`.chat-item[data-chat="${chatId}"]`);
+    if (existingItem) { 
+        switchChat(chatId); 
+        return; 
+    }
+    
+    // Создаем новый чат в списке
+    const chatItem = document.createElement('div');
+    chatItem.className = 'chat-item';
+    chatItem.dataset.chat = chatId;
+    chatItem.innerHTML = `
+        <i class="fas fa-user"></i>
+        <span class="chat-name">${profile.nick || 'Пользователь'}</span>
+        <span class="chat-badge">0</span>
+        <button class="chat-close" title="Закрыть чат"><i class="fas fa-times"></i></button>
+    `;
+    chatList.appendChild(chatItem);
+    
+    // Закрытие чата
+    const closeBtn = chatItem.querySelector('.chat-close');
+    closeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        closePrivateChat(chatId);
     });
+    
+    // Переключение на чат
+    chatItem.addEventListener('click', () => switchChat(chatId));
+    
+    // Сохраняем в список приватных чатов
+    privateChats[userId] = chatId;
+    if (!chatHistory[chatId]) {
+        chatHistory[chatId] = [];
+        console.log('📁 Создана история для чата:', chatId);
+    }
+    
+    // Загружаем историю с сервера
+    socket.emit('getChatHistory', { chatId: chatId });
+    
+    // Переключаемся на новый чат
+    switchChat(chatId);
+}
 
-    socket.on('getChatHistory', ({ chatId }) => {
-        if (chatId === 'main') {
-            socket.emit('chatHistory', {
-                chatId: 'main',
-                messages: chatHistory['main'] || []
+function closePrivateChat(chatId) {
+    const item = document.querySelector(`.chat-item[data-chat="${chatId}"]`);
+    if (item) item.remove();
+    for (const [userId, id] of Object.entries(privateChats)) {
+        if (id === chatId) { delete privateChats[userId]; break; }
+    }
+    if (currentChat === chatId) switchChat('main');
+}
+
+// ============ ПЕРЕКЛЮЧЕНИЕ ЧАТОВ ============
+function switchChat(chatId) {
+    document.querySelectorAll('.chat-item').forEach(el => {
+        el.classList.toggle('active', el.dataset.chat === chatId);
+    });
+    currentChat = chatId;
+    
+    let title = 'Общий чат';
+    if (chatId.startsWith('dm_')) {
+        const userId = chatId.replace('dm_', '');
+        const userData = findUserById(userId);
+        if (userData) title = `Личный чат с ${userData.profile.nick || 'пользователем'}`;
+    }
+    chatTitleEl.textContent = title;
+    
+    // Очищаем окно чата
+    chatWindow.innerHTML = '';
+    
+    // Загружаем историю
+    if (chatId === 'main') {
+        socket.emit('getChatHistory', { chatId: 'main' });
+    } else if (chatId.startsWith('dm_')) {
+        // Сначала показываем локальную историю
+        if (chatHistory[chatId] && chatHistory[chatId].length > 0) {
+            console.log('📜 Загрузка локальной истории для', chatId, 'сообщений:', chatHistory[chatId].length);
+            chatHistory[chatId].forEach(msg => {
+                const div = createMessageElement(msg);
+                chatWindow.appendChild(div);
             });
-        } else if (chatId && chatId.startsWith('dm_') && chatId.includes(socket.id)) {
-            if (privateChats[chatId]) {
-                socket.emit('chatHistory', {
-                    chatId: chatId,
-                    messages: privateChats[chatId] || []
-                });
-            } else {
-                socket.emit('chatHistory', {
-                    chatId: chatId,
-                    messages: []
-                });
-            }
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+        } else {
+            // Если локальной истории нет, запрашиваем с сервера
+            console.log('📡 Запрос истории с сервера для', chatId);
+            socket.emit('getChatHistory', { chatId: chatId });
         }
-    });
-
-    socket.on('updateProfile', (data) => {
-        if (users[socket.id]) {
-            users[socket.id] = { ...users[socket.id], ...data };
-            io.emit('onlineUsers', users);
-            io.emit('userProfiles', users);
-        }
-    });
+    }
+    
+    // Сбрасываем бейдж
+    const badge = document.querySelector(`.chat-item[data-chat="${chatId}"] .chat-badge`);
+    if (badge) badge.textContent = '0';
+}
 
     // Модерация
     socket.on('moderation:searchUser', ({ query }) => {
