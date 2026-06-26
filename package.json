@@ -1,7 +1,7 @@
 {
   "name": "bober-chat",
   "version": "1.0.0",
-  "description": "Bober Chat with moderation",
+  "description": "Bober Chat with private messages",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
