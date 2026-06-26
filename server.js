@@ -58,15 +58,18 @@ io.on('connection', (socket) => {
             moderations.roles[socket.id] = 'user';
         }
 
+        // Отправляем всем обновленные списки
         io.emit('onlineUsers', users);
         io.emit('userProfiles', users);
         io.emit('userRoles', moderations.roles);
 
+        // Отправляем историю общего чата
         socket.emit('chatHistory', {
             chatId: 'main',
             messages: chatHistory['main'] || []
         });
 
+        // Отправляем историю личных чатов
         for (const [key, messages] of Object.entries(privateChats)) {
             if (key.includes(socket.id)) {
                 socket.emit('chatHistory', {
@@ -98,6 +101,7 @@ io.on('connection', (socket) => {
             media: media || null
         };
 
+        // ОБЩИЙ ЧАТ
         if (chatId === 'main') {
             if (!chatHistory['main']) chatHistory['main'] = [];
             chatHistory['main'].push(msg);
@@ -105,7 +109,12 @@ io.on('connection', (socket) => {
                 chatHistory['main'] = chatHistory['main'].slice(-1000);
             }
             io.emit('newMessage', { ...msg, chatId: 'main' });
-        } else if (chatId.startsWith('dm_')) {
+            console.log(`📨 ${msg.nick} -> общий чат: ${msg.message.substring(0, 30)}`);
+        }
+
+        // ЛИЧНЫЙ ЧАТ
+        else if (chatId.startsWith('dm_')) {
+            // Получаем ID получателя
             const parts = chatId.split('_');
             const targetId = parts[1] === socket.id ? parts[2] : parts[1];
             
@@ -124,9 +133,15 @@ io.on('connection', (socket) => {
                 privateChats[chatKey] = privateChats[chatKey].slice(-1000);
             }
 
-            io.to(socket.id).emit('newMessage', { ...msg, chatId: chatKey });
+            // Отправляем отправителю
+            socket.emit('newMessage', { ...msg, chatId: chatKey });
+            
+            // Отправляем получателю
             if (users[targetId]) {
                 io.to(targetId).emit('newMessage', { ...msg, chatId: chatKey });
+                console.log(`📨 ${msg.nick} -> ${users[targetId].nick}: ${msg.message.substring(0, 30)}`);
+            } else {
+                console.log(`📨 ${msg.nick} -> офлайн: ${msg.message.substring(0, 30)}`);
             }
         }
     });
