@@ -345,7 +345,7 @@
             <div class="chat-window" id="chatWindow">
                 <div class="message message-other">
                     <div class="msg-avatar"><span class="avatar-emoji">🤖</span></div>
-                    <div class="msg-content"><strong>Бот:</strong> Добро пожаловать в Bober Chat! 🦫</div>
+                    <div class="msg-content"><strong data-userid="system">Бот:</strong> Добро пожаловать в Bober Chat! 🦫</div>
                 </div>
             </div>
 
@@ -478,7 +478,6 @@
     (function() {
         'use strict';
 
-        // ============ КАНВАС ============
         const canvas = document.getElementById('bgCanvas');
         const ctx = canvas.getContext('2d');
         let mouseX = 0.5;
@@ -518,10 +517,9 @@
         }
         drawBackground();
 
-        // ============ ПОДКЛЮЧЕНИЕ ============
         const socket = io();
 
-        // ============ DOM ============
+        // DOM
         const chatWindow = document.getElementById('chatWindow');
         const msgInput = document.getElementById('msgInput');
         const sendBtn = document.getElementById('sendMsgBtn');
@@ -539,7 +537,7 @@
         const searchInput = document.getElementById('searchInput');
         const searchResults = document.getElementById('searchResults');
 
-        // ============ ПРОФИЛЬ ============
+        // Профиль
         const profileOverlay = document.getElementById('profileOverlay');
         const profileModal = document.getElementById('profileModal');
         const viewMode = document.getElementById('viewMode');
@@ -565,7 +563,7 @@
         const bigAvatarOverlay = document.getElementById('bigAvatarOverlay');
         const bannerOverlay = document.getElementById('bannerOverlay');
 
-        // ============ АДМИНКА ============
+        // Админка
         const adminPanelAdvanced = document.getElementById('adminPanelAdvanced');
         const adminSearchInput = document.getElementById('adminSearchInput');
         const adminSearchBtn = document.getElementById('adminSearchBtn');
@@ -581,7 +579,7 @@
         const adminUnbanBtn = document.getElementById('adminUnbanBtn');
         const adminReasonInput = document.getElementById('adminReasonInput');
 
-        // ============ НАСТРОЙКИ ============
+        // Настройки
         const profileSettingsModal = document.getElementById('profileSettingsModal');
         const profileSettingsClose = document.getElementById('profileSettingsClose');
         const profileColorPicker = document.getElementById('profileColorPicker');
@@ -590,7 +588,7 @@
         const profileBgPreview = document.getElementById('profileBgPreview');
         const saveProfileSettings = document.getElementById('saveProfileSettings');
 
-        // ============ РЕДАКТИРОВАНИЕ ============
+        // Редактирование
         const editToggleBtn = document.getElementById('editToggleBtn');
         const editModeHint = document.getElementById('editModeHint');
         const hintCloseBtn = document.getElementById('hintCloseBtn');
@@ -608,7 +606,7 @@
         const themeCustomizer = document.getElementById('themeCustomizer');
         const saveCustomTheme = document.getElementById('saveCustomTheme');
 
-        // ============ ПЕРЕМЕННЫЕ ============
+        // Переменные
         let currentNick = localStorage.getItem('chatNick') || 'Гость';
         let currentUsername = localStorage.getItem('chatUsername') || 'гость';
         let currentAvatar = localStorage.getItem('chatAvatarEmoji') || '👤';
@@ -625,7 +623,7 @@
         let privateChats = {};
         let adminSelectedTargetId = null;
 
-        // ============ ИНИЦИАЛИЗАЦИЯ ============
+        // Инициализация
         nickDisplay.textContent = currentNick;
         usernameDisplay.textContent = '@' + currentUsername;
         avatarEmoji.textContent = currentAvatar;
@@ -641,14 +639,11 @@
         // ============ ПОИСК ============
         function findUserByUsername(username) {
             const clean = username.toLowerCase().replace(/^@/, '');
-            console.log('🔍 Ищем пользователя:', clean);
             for (const [id, profile] of Object.entries(userProfiles)) {
                 if (profile.username && profile.username.toLowerCase() === clean) {
-                    console.log('✅ Найден:', profile.nick);
                     return { userId: id, profile: profile };
                 }
             }
-            console.log('❌ Пользователь не найден');
             return null;
         }
 
@@ -670,7 +665,6 @@
             return null;
         }
 
-        // ============ ПОИСК (UI) ============
         function performSearch(query) {
             const q = query.toLowerCase().trim().replace(/^@/, '');
             const results = [];
@@ -851,6 +845,7 @@
             const senderName = senderData ? senderData.profile.nick : (msg.nick || 'Гость');
             const senderUsername = senderData ? senderData.profile.username : (msg.username || '');
             
+            // СОЗДАЕМ ИМЯ С КЛИКОМ
             const nameSpan = document.createElement('strong');
             nameSpan.textContent = senderName + ':';
             nameSpan.style.cursor = 'pointer';
@@ -858,13 +853,25 @@
             nameSpan.dataset.username = senderUsername;
             nameSpan.title = 'Кликните чтобы открыть профиль';
             
+            // ОБРАБОТЧИК КЛИКА
             nameSpan.addEventListener('click', function(e) {
                 e.stopPropagation();
                 const userId = this.dataset.userid;
+                console.log('👆 Клик по имени:', userId);
                 if (userId) {
-                    const userData = findUserById(userId);
+                    // Пробуем найти пользователя
+                    let userData = findUserById(userId);
+                    if (!userData && onlineUsers[userId]) {
+                        // Если есть в onlineUsers, но нет в userProfiles
+                        userProfiles[userId] = onlineUsers[userId];
+                        userData = findUserById(userId);
+                    }
                     if (userData) {
+                        console.log('👤 Открываем профиль:', userData.profile.nick);
                         openProfile(userId);
+                    } else {
+                        console.log('❌ Пользователь не найден');
+                        alert('Пользователь не найден!');
                     }
                 }
             });
@@ -899,7 +906,7 @@
                 const m = mentions[i];
                 const userData = findUserByUsername(m.username);
                 if (userData) {
-                    const mentionHtml = `<span class="mention" data-userid="${userData.userId}" data-username="${m.username}">@${m.username}</span>`;
+                    const mentionHtml = `<span class="mention" data-userid="${userData.userId}" data-username="${m.username}" style="color:var(--custom-accent);font-weight:600;cursor:pointer;">@${m.username}</span>`;
                     result = result.substring(0, m.index) + mentionHtml + result.substring(m.index + m.username.length + 1);
                 }
             }
@@ -935,6 +942,7 @@
                 showProfile(onlineUsers[userId], false);
             } else {
                 console.log('❌ Пользователь не найден');
+                alert('Пользователь не найден!');
             }
         }
 
@@ -1076,7 +1084,6 @@
             reader.onload = function(e) {
                 const dataUrl = e.target.result;
                 currentAvatar = dataUrl;
-                // Обновляем все аватарки
                 avatarImg.src = dataUrl;
                 avatarImg.style.display = 'block';
                 avatarEmoji.style.display = 'none';
@@ -1084,7 +1091,6 @@
                 bigAvatarImg.style.display = 'block';
                 bigAvatarEmoji.style.display = 'none';
                 localStorage.setItem('chatAvatarImage', dataUrl);
-                // Отправляем на сервер
                 socket.emit('updateProfile', {
                     nick: currentNick,
                     username: currentUsername,
@@ -1092,37 +1098,6 @@
                     status: currentStatus,
                     bio: currentBio,
                     banner: currentBanner,
-                    color: profileColor
-                });
-            };
-            reader.readAsDataURL(file);
-        }
-
-        // ============ ЗАГРУЗКА БАННЕРА ============
-        function loadBannerFromFile(file) {
-            if (!file) return;
-            if (!file.type.startsWith('image/')) {
-                alert('Пожалуйста, выберите изображение!');
-                return;
-            }
-            if (file.size > 2 * 1024 * 1024) {
-                alert('Файл слишком большой! Максимум 2MB.');
-                return;
-            }
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                const dataUrl = e.target.result;
-                currentBanner = dataUrl;
-                bannerImg.src = dataUrl;
-                bannerImg.style.display = 'block';
-                localStorage.setItem('chatBanner', dataUrl);
-                socket.emit('updateProfile', {
-                    nick: currentNick,
-                    username: currentUsername,
-                    avatar: currentAvatar,
-                    status: currentStatus,
-                    bio: currentBio,
-                    banner: dataUrl,
                     color: profileColor
                 });
             };
@@ -1149,7 +1124,6 @@
 
         socket.on('userProfiles', (profiles) => {
             userProfiles = profiles;
-            // Обновляем имена в списке чатов
             document.querySelectorAll('.chat-item[data-chat^="dm_"]').forEach(item => {
                 const chatId = item.dataset.chat;
                 const userId = chatId.replace('dm_', '');
@@ -1400,7 +1374,6 @@
         profileSaveBtn.addEventListener('click', saveProfile);
         profileCancelBtn.addEventListener('click', cancelEdit);
 
-        // Загрузка аватарки
         bigAvatarOverlay.addEventListener('click', function(e) {
             e.stopPropagation();
             if (!isOwnProfile) return;
@@ -1415,7 +1388,6 @@
             input.click();
         });
 
-        // Загрузка баннера
         bannerOverlay.addEventListener('click', function(e) {
             e.stopPropagation();
             if (!isOwnProfile) return;
@@ -1424,8 +1396,34 @@
             input.accept = 'image/*';
             input.onchange = function(e) {
                 const file = e.target.files[0];
-                loadBannerFromFile(file);
-                input.remove();
+                if (!file) return;
+                if (!file.type.startsWith('image/')) {
+                    alert('Пожалуйста, выберите изображение!');
+                    return;
+                }
+                if (file.size > 2 * 1024 * 1024) {
+                    alert('Файл слишком большой! Максимум 2MB.');
+                    return;
+                }
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const dataUrl = e.target.result;
+                    currentBanner = dataUrl;
+                    bannerImg.src = dataUrl;
+                    bannerImg.style.display = 'block';
+                    localStorage.setItem('chatBanner', dataUrl);
+                    socket.emit('updateProfile', {
+                        nick: currentNick,
+                        username: currentUsername,
+                        avatar: currentAvatar,
+                        status: currentStatus,
+                        bio: currentBio,
+                        banner: dataUrl,
+                        color: profileColor
+                    });
+                    input.remove();
+                };
+                reader.readAsDataURL(file);
             };
             input.click();
         });
@@ -1615,6 +1613,41 @@
             editModeHint.classList.remove('active');
         });
 
+        // ============ РЕДАКТИРОВАНИЕ ТЕКСТА ============
+        document.addEventListener('click', (e) => {
+            if (!editMode) return;
+            const editable = e.target.closest('.editable-text');
+            if (!editable) return;
+            e.stopPropagation();
+            const target = editable.dataset.target;
+            const currentText = editable.textContent.trim();
+            textEditInput.value = currentText;
+            const labels = {
+                'brandName': 'Название приложения',
+                'chatTitle': 'Название чата',
+                'sidebarTitle': 'Название раздела "Чаты"',
+                'mainChatName': 'Название общего чата'
+            };
+            textEditLabel.textContent = labels[target] || 'Редактировать текст';
+            textEditModal.classList.add('active');
+            textEditInput.focus();
+            textEditInput.select();
+        });
+
+        textEditSave.addEventListener('click', () => {
+            const newText = textEditInput.value.trim();
+            if (newText) {
+                const settings = JSON.parse(localStorage.getItem('uiTexts') || '{}');
+                settings[textEditTarget.target] = newText;
+                localStorage.setItem('uiTexts', JSON.stringify(settings));
+            }
+            textEditModal.classList.remove('active');
+        });
+
+        textEditCancel.addEventListener('click', () => {
+            textEditModal.classList.remove('active');
+        });
+
         // ============ ИНИЦИАЛИЗАЦИЯ ============
         loadCustomTheme();
         loadProfileTheme();
@@ -1637,7 +1670,6 @@
             } catch(e) {}
         }
 
-        // Восстановление аватарки
         try {
             const savedImage = localStorage.getItem('chatAvatarImage');
             if (savedImage) {
