@@ -13,27 +13,37 @@ const io = new Server(server, {
     }
 });
 
-// Статические файлы
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(cors());
 
 // Хранилище данных
 const users = {};
 const chatHistory = {
-    'main': []
+    'main': []  // общий чат
 };
-const privateChats = {};
+const privateChats = {}; // личные чаты: { 'dm_user1_user2': [messages] }
 const moderations = {
     bans: {},
     warnings: {},
     roles: {}
 };
 
-// Обработка подключений
+// ============ ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ============
+function getPrivateChatKey(userId1, userId2) {
+    // Сортируем ID для единообразия ключа
+    const sorted = [userId1, userId2].sort();
+    return `dm_${sorted[0]}_${sorted[1]}`;
+}
+
+function isUserOnline(userId) {
+    return !!users[userId];
+}
+
+// ============ ОБРАБОТКА ПОДКЛЮЧЕНИЙ ============
 io.on('connection', (socket) => {
     console.log('🟢 Пользователь подключен:', socket.id);
 
-    // Регистрация пользователя
+    // ============ РЕГИСТРАЦИЯ ============
     socket.on('register', (data) => {
         const { nick, username, avatar, status, bio, banner, color } = data;
         
@@ -59,68 +69,110 @@ io.on('connection', (socket) => {
             ip: socket.handshake.address
         };
 
-        // Применяем роль (если есть)
         if (!moderations.roles[socket.id]) {
             moderations.roles[socket.id] = 'user';
         }
 
-        // Отправляем список пользователей
+        // Отправляем списки всем
         io.emit('onlineUsers', users);
         io.emit('userProfiles', users);
         io.emit('userRoles', moderations.roles);
 
-        // Отправляем историю чата
+        // Отправляем историю общего чата
         socket.emit('chatHistory', {
             chatId: 'main',
             messages: chatHistory['main'] || []
         });
 
+        // Отправляем историю всех личных чатов, где участвует пользователь
+        for (const [key, messages] of Object.entries(privateChats)) {
+            if (key.includes(socket.id)) {
+                const chatId = key;
+                socket.emit('chatHistory', {
+                    chatId: chatId,
+                    messages: messages
+                });
+            }
+        }
+
         console.log(`👤 ${nick} (@${username}) подключился`);
     });
 
-    // Отправка сообщения
+    // ============ ОТПРАВКА СООБЩЕНИЯ ============
     socket.on('sendMessage', (msgData) => {
         const { chatId, message, nick, username, avatar, senderId, targetUserId, media } = msgData;
         
+        // Проверка на бан
+        if (moderations.bans[socket.id]) {
+            socket.emit('banned', moderations.bans[socket.id]);
+            return;
+        }
+
         const msg = {
-            id: Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+            id: Date.now() + '_' + Math.random().toString(36).substr(2, 6),
             senderId: socket.id,
-            nick: nick,
-            username: username,
-            avatar: avatar,
-            message: message,
+            nick: nick || users[socket.id]?.nick || 'Гость',
+            username: username || users[socket.id]?.username || 'гость',
+            avatar: avatar || users[socket.id]?.avatar || '👤',
+            message: message || '',
             timestamp: new Date().toISOString(),
             media: media || null
         };
 
+        // ===== ОБЩИЙ ЧАТ =====
         if (chatId === 'main') {
-            // Общий чат
             if (!chatHistory['main']) chatHistory['main'] = [];
             chatHistory['main'].push(msg);
-            // Ограничиваем историю
             if (chatHistory['main'].length > 1000) {
                 chatHistory['main'] = chatHistory['main'].slice(-1000);
             }
             io.emit('newMessage', { ...msg, chatId: 'main' });
-        } else if (chatId.startsWith('dm_')) {
-            // Личные сообщения
-            const targetId = chatId.replace('dm_', '');
-            const chatKey = `dm_${[socket.id, targetId].sort().join('_')}`;
+            console.log(`📨 ${msg.nick} -> общий чат: ${msg.message.substring(0, 30)}`);
+        }
+
+        // ===== ЛИЧНЫЙ ЧАТ =====
+        else if (chatId.startsWith('dm_')) {
+            // Получаем ID получателя из chatId
+            const parts = chatId.split('_');
+            const targetId = parts[1] === socket.id ? parts[2] : parts[1];
             
+            // Проверяем, существует ли получатель
+            if (!users[targetId]) {
+                socket.emit('notification', '❌ Пользователь не найден или офлайн');
+                return;
+            }
+
+            // Проверяем, не забанен ли получатель
+            if (moderations.bans[targetId]) {
+                socket.emit('notification', '❌ Пользователь забанен');
+                return;
+            }
+
+            // Ключ чата
+            const chatKey = getPrivateChatKey(socket.id, targetId);
+            
+            // Сохраняем сообщение
             if (!privateChats[chatKey]) {
                 privateChats[chatKey] = [];
             }
             privateChats[chatKey].push(msg);
-            
-            // Отправляем отправителю и получателю
-            io.to(socket.id).emit('newMessage', { ...msg, chatId });
-            if (users[targetId]) {
-                io.to(targetId).emit('newMessage', { ...msg, chatId });
+            if (privateChats[chatKey].length > 1000) {
+                privateChats[chatKey] = privateChats[chatKey].slice(-1000);
             }
+
+            // Отправляем отправителю
+            io.to(socket.id).emit('newMessage', { ...msg, chatId: chatKey });
+            
+            // Отправляем получателю (если онлайн)
+            if (users[targetId]) {
+                io.to(targetId).emit('newMessage', { ...msg, chatId: chatKey });
+            }
+            
+            console.log(`📨 ${msg.nick} -> ${users[targetId]?.nick || 'офлайн'}: ${msg.message.substring(0, 30)}`);
         }
     });
 
-    // Получение истории чата
+    // ============ ПОЛУЧЕНИЕ ИСТОРИИ ============
     socket.on('getChatHistory', ({ chatId }) => {
         if (chatId === 'main') {
             socket.emit('chatHistory', {
@@ -128,15 +180,19 @@ io.on('connection', (socket) => {
                 messages: chatHistory['main'] || []
             });
         } else if (chatId.startsWith('dm_')) {
-            const chatKey = `dm_${[socket.id, chatId.replace('dm_', '')].sort().join('_')}`;
-            socket.emit('chatHistory', {
-                chatId,
-                messages: privateChats[chatKey] || []
-            });
+            // Проверяем, что пользователь имеет доступ к этому чату
+            if (chatId.includes(socket.id)) {
+                socket.emit('chatHistory', {
+                    chatId: chatId,
+                    messages: privateChats[chatId] || []
+                });
+            } else {
+                socket.emit('notification', '❌ Нет доступа к этому чату');
+            }
         }
     });
 
-    // Обновление профиля
+    // ============ ОБНОВЛЕНИЕ ПРОФИЛЯ ============
     socket.on('updateProfile', (data) => {
         if (users[socket.id]) {
             users[socket.id] = { ...users[socket.id], ...data };
@@ -145,11 +201,10 @@ io.on('connection', (socket) => {
         }
     });
 
-    // ===== МОДЕРАЦИЯ =====
+    // ============ МОДЕРАЦИЯ ============
     socket.on('moderation:searchUser', ({ query }) => {
-        // Только для админов
         if (moderations.roles[socket.id] !== 'admin') {
-            socket.emit('notification', 'У вас нет прав администратора');
+            socket.emit('notification', '⛔ У вас нет прав администратора');
             return;
         }
 
@@ -167,12 +222,12 @@ io.on('connection', (socket) => {
 
     socket.on('moderation:warn', ({ targetId, reason }) => {
         if (moderations.roles[socket.id] !== 'admin') {
-            socket.emit('notification', 'У вас нет прав администратора');
+            socket.emit('notification', '⛔ У вас нет прав администратора');
             return;
         }
 
         if (!users[targetId]) {
-            socket.emit('notification', 'Пользователь не найден');
+            socket.emit('notification', '❌ Пользователь не найден');
             return;
         }
 
@@ -185,21 +240,36 @@ io.on('connection', (socket) => {
             timestamp: new Date().toISOString()
         });
 
-        // Уведомляем пользователя
-        io.to(targetId).emit('notification', `⚠️ Вы получили предупреждение: ${reason || 'Нарушение правил'}`);
+        const count = moderations.warnings[targetId].length;
+        io.to(targetId).emit('notification', `⚠️ Вы получили предупреждение (${count}/3): ${reason || 'Нарушение правил'}`);
         io.to(socket.id).emit('notification', `✅ Предупреждение выдано пользователю ${users[targetId].nick}`);
+        
+        // Автобан после 3 предупреждений
+        if (count >= 3) {
+            moderations.bans[targetId] = {
+                reason: 'Автоматический бан (3 предупреждения)',
+                moderator: 'system',
+                timestamp: new Date().toISOString(),
+                until: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+            };
+            io.to(targetId).emit('banned', moderations.bans[targetId]);
+            setTimeout(() => {
+                io.to(targetId).disconnectSockets(true);
+            }, 1000);
+            io.to(socket.id).emit('notification', `🚫 Пользователь ${users[targetId].nick} автоматически забанен (3 предупреждения)`);
+        }
         
         console.log(`⚠️ ${users[socket.id].nick} выдал предупреждение ${users[targetId].nick}: ${reason}`);
     });
 
     socket.on('moderation:ban', ({ targetId, reason, banIP }) => {
         if (moderations.roles[socket.id] !== 'admin') {
-            socket.emit('notification', 'У вас нет прав администратора');
+            socket.emit('notification', '⛔ У вас нет прав администратора');
             return;
         }
 
         if (!users[targetId]) {
-            socket.emit('notification', 'Пользователь не найден');
+            socket.emit('notification', '❌ Пользователь не найден');
             return;
         }
 
@@ -212,8 +282,6 @@ io.on('connection', (socket) => {
         };
 
         moderations.bans[targetId] = banData;
-
-        // Отключаем пользователя
         io.to(targetId).emit('banned', banData);
         
         setTimeout(() => {
@@ -226,32 +294,21 @@ io.on('connection', (socket) => {
 
     socket.on('moderation:unban', ({ targetId }) => {
         if (moderations.roles[socket.id] !== 'admin') {
-            socket.emit('notification', 'У вас нет прав администратора');
+            socket.emit('notification', '⛔ У вас нет прав администратора');
             return;
         }
 
         if (!moderations.bans[targetId]) {
-            socket.emit('notification', 'Пользователь не забанен');
+            socket.emit('notification', '❌ Пользователь не забанен');
             return;
         }
 
         delete moderations.bans[targetId];
         io.to(socket.id).emit('notification', `✅ Пользователь разбанен`);
-        console.log(`🔓 ${users[socket.id].nick} разбанил пользователя`);
+        console.log(`🔓 ${users[socket.id]?.nick} разбанил пользователя`);
     });
 
-    // ===== ОТКЛЮЧЕНИЕ =====
-    socket.on('disconnect', () => {
-        if (users[socket.id]) {
-            console.log(`🔴 ${users[socket.id].nick} отключился`);
-            delete users[socket.id];
-            io.emit('onlineUsers', users);
-            io.emit('userProfiles', users);
-            io.emit('userDisconnected', socket.id);
-        }
-    });
-
-    // ===== АДМИН КЛЮЧ =====
+    // ============ АДМИН-КЛЮЧ ============
     socket.on('claimAdmin', ({ key }) => {
         const ADMIN_KEY = 'bober_admin_2024';
         
@@ -265,10 +322,22 @@ io.on('connection', (socket) => {
             socket.emit('notification', '❌ Неверный ключ');
         }
     });
+
+    // ============ ОТКЛЮЧЕНИЕ ============
+    socket.on('disconnect', () => {
+        if (users[socket.id]) {
+            console.log(`🔴 ${users[socket.id].nick} отключился`);
+            delete users[socket.id];
+            io.emit('onlineUsers', users);
+            io.emit('userProfiles', users);
+            io.emit('userDisconnected', socket.id);
+        }
+    });
 });
 
-// Запуск сервера
+// ============ ЗАПУСК СЕРВЕРА ============
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`🚀 Сервер запущен на порту ${PORT}`);
+    console.log(`🦫 Bober Chat готов к работе!`);
 });
