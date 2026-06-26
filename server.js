@@ -22,25 +22,17 @@ const chatHistory = { 'main': [] };
 const privateChats = {};
 const moderations = { bans: {}, warnings: {}, roles: {} };
 
-// Функция для создания ключа приватного чата
 function getPrivateChatKey(userId1, userId2) {
     const sorted = [userId1, userId2].sort();
     return `dm_${sorted[0]}_${sorted[1]}`;
 }
 
-// Проверка, существует ли пользователь
-function isUserOnline(userId) {
-    return !!users[userId];
-}
-
 io.on('connection', (socket) => {
     console.log('🟢 Подключен:', socket.id);
 
-    // ===== РЕГИСТРАЦИЯ =====
     socket.on('register', (data) => {
         const { nick, username, avatar, status, bio, banner, color } = data;
         
-        // Проверка уникальности юзернейма
         const existingUser = Object.values(users).find(u => 
             u.username === username && u.socketId !== socket.id
         );
@@ -66,18 +58,15 @@ io.on('connection', (socket) => {
             moderations.roles[socket.id] = 'user';
         }
 
-        // Отправляем всем обновленные списки
         io.emit('onlineUsers', users);
         io.emit('userProfiles', users);
         io.emit('userRoles', moderations.roles);
 
-        // Отправляем историю общего чата
         socket.emit('chatHistory', {
             chatId: 'main',
             messages: chatHistory['main'] || []
         });
 
-        // Отправляем историю всех личных чатов пользователя
         for (const [key, messages] of Object.entries(privateChats)) {
             if (key.includes(socket.id)) {
                 socket.emit('chatHistory', {
@@ -90,17 +79,14 @@ io.on('connection', (socket) => {
         console.log(`👤 ${nick} (@${username}) подключился`);
     });
 
-    // ===== ОТПРАВКА СООБЩЕНИЯ =====
     socket.on('sendMessage', (msgData) => {
         const { chatId, message, nick, username, avatar, senderId, targetUserId, media } = msgData;
         
-        // Проверка на бан
         if (moderations.bans[socket.id]) {
             socket.emit('banned', moderations.bans[socket.id]);
             return;
         }
 
-        // Создаем сообщение
         const msg = {
             id: Date.now() + '_' + Math.random().toString(36).substr(2, 6),
             senderId: socket.id,
@@ -112,7 +98,7 @@ io.on('connection', (socket) => {
             media: media || null
         };
 
-        // ===== ОБЩИЙ ЧАТ =====
+        // ОБЩИЙ ЧАТ
         if (chatId === 'main') {
             if (!chatHistory['main']) chatHistory['main'] = [];
             chatHistory['main'].push(msg);
@@ -123,33 +109,25 @@ io.on('connection', (socket) => {
             console.log(`📨 ${msg.nick} -> общий чат: ${msg.message.substring(0, 30)}`);
         }
 
-        // ===== ЛИЧНЫЙ ЧАТ =====
+        // ЛИЧНЫЙ ЧАТ
         else if (chatId && chatId.startsWith('dm_')) {
-            // Получаем ID получателя из chatId
             const parts = chatId.split('_');
-            // parts = ['dm', 'id1', 'id2']
             const targetId = parts[1] === socket.id ? parts[2] : parts[1];
             
             console.log(`📨 Попытка ЛС от ${socket.id} к ${targetId}`);
             
-            // Проверяем, существует ли получатель
             if (!users[targetId]) {
                 socket.emit('notification', '❌ Пользователь не найден или офлайн');
-                console.log(`❌ Получатель ${targetId} не найден`);
                 return;
             }
 
-            // Проверяем, не забанен ли получатель
             if (moderations.bans[targetId]) {
                 socket.emit('notification', '❌ Пользователь забанен');
                 return;
             }
 
-            // Создаем ключ чата
             const chatKey = getPrivateChatKey(socket.id, targetId);
-            console.log(`🔑 Ключ чата: ${chatKey}`);
             
-            // Сохраняем сообщение
             if (!privateChats[chatKey]) {
                 privateChats[chatKey] = [];
             }
@@ -158,24 +136,17 @@ io.on('connection', (socket) => {
                 privateChats[chatKey] = privateChats[chatKey].slice(-1000);
             }
 
-            // Отправляем сообщение ОТПРАВИТЕЛЮ
             io.to(socket.id).emit('newMessage', { ...msg, chatId: chatKey });
-            console.log(`📨 ${msg.nick} -> себе (${socket.id}): ${msg.message.substring(0, 30)}`);
             
-            // Отправляем сообщение ПОЛУЧАТЕЛЮ (если онлайн)
             if (users[targetId]) {
                 io.to(targetId).emit('newMessage', { ...msg, chatId: chatKey });
                 console.log(`📨 ${msg.nick} -> ${users[targetId].nick}: ${msg.message.substring(0, 30)}`);
             } else {
                 console.log(`📨 ${msg.nick} -> офлайн: ${msg.message.substring(0, 30)}`);
-                // Сохраняем для офлайн-пользователя (будет доставлено при входе)
             }
-        } else {
-            console.log(`❌ Неизвестный chatId: ${chatId}`);
         }
     });
 
-    // ===== ПОЛУЧЕНИЕ ИСТОРИИ =====
     socket.on('getChatHistory', ({ chatId }) => {
         if (chatId === 'main') {
             socket.emit('chatHistory', {
@@ -183,7 +154,6 @@ io.on('connection', (socket) => {
                 messages: chatHistory['main'] || []
             });
         } else if (chatId && chatId.startsWith('dm_') && chatId.includes(socket.id)) {
-            // Проверяем, что пользователь имеет доступ к этому чату
             if (privateChats[chatId]) {
                 socket.emit('chatHistory', {
                     chatId: chatId,
@@ -198,7 +168,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // ===== ОБНОВЛЕНИЕ ПРОФИЛЯ =====
     socket.on('updateProfile', (data) => {
         if (users[socket.id]) {
             users[socket.id] = { ...users[socket.id], ...data };
@@ -207,7 +176,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    // ===== МОДЕРАЦИЯ =====
+    // Модерация
     socket.on('moderation:searchUser', ({ query }) => {
         if (moderations.roles[socket.id] !== 'admin') {
             socket.emit('notification', '⛔ Нет прав');
@@ -279,7 +248,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // ===== ОТКЛЮЧЕНИЕ =====
     socket.on('disconnect', () => {
         if (users[socket.id]) {
             console.log(`🔴 ${users[socket.id].nick} отключился`);
@@ -294,5 +262,4 @@ io.on('connection', (socket) => {
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`🚀 Сервер запущен на порту ${PORT}`);
-    console.log(`🦫 Bober Chat готов!`);
 });
