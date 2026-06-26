@@ -765,8 +765,12 @@
             chatItem.addEventListener('click', () => switchChat(chatId));
             
             privateChats[userId] = chatId;
-            if (!chatHistory[chatId]) chatHistory[chatId] = [];
+            if (!chatHistory[chatId]) {
+                chatHistory[chatId] = [];
+                console.log('📁 Создана история для чата:', chatId);
+            }
             
+            socket.emit('getChatHistory', { chatId: chatId });
             switchChat(chatId);
         }
 
@@ -785,6 +789,7 @@
                 el.classList.toggle('active', el.dataset.chat === chatId);
             });
             currentChat = chatId;
+            
             let title = 'Общий чат';
             if (chatId.startsWith('dm_')) {
                 const userId = chatId.replace('dm_', '');
@@ -792,7 +797,25 @@
                 if (userData) title = `Личный чат с ${userData.profile.nick || 'пользователем'}`;
             }
             chatTitleEl.textContent = title;
-            loadChatHistory(chatId);
+            
+            chatWindow.innerHTML = '';
+            
+            if (chatId === 'main') {
+                socket.emit('getChatHistory', { chatId: 'main' });
+            } else if (chatId.startsWith('dm_')) {
+                if (chatHistory[chatId] && chatHistory[chatId].length > 0) {
+                    console.log('📜 Загрузка локальной истории для', chatId, 'сообщений:', chatHistory[chatId].length);
+                    chatHistory[chatId].forEach(msg => {
+                        const div = createMessageElement(msg);
+                        chatWindow.appendChild(div);
+                    });
+                    chatWindow.scrollTop = chatWindow.scrollHeight;
+                } else {
+                    console.log('📡 Запрос истории с сервера для', chatId);
+                    socket.emit('getChatHistory', { chatId: chatId });
+                }
+            }
+            
             const badge = document.querySelector(`.chat-item[data-chat="${chatId}"] .chat-badge`);
             if (badge) badge.textContent = '0';
         }
@@ -845,24 +868,29 @@
         // ============ ПОЛУЧЕНИЕ СООБЩЕНИЙ ============
         socket.on('newMessage', (msg) => {
             const chatId = msg.chatId || 'main';
-            console.log('📩 Новое сообщение в чат:', chatId, 'от:', msg.nick);
+            console.log('📩 Новое сообщение в чат:', chatId, 'от:', msg.nick, 'текст:', msg.message);
             
             if (chatId.startsWith('dm_')) {
-                const targetUserId = chatId.replace('dm_', '');
-                if (targetUserId !== socket.id && msg.senderId !== socket.id) {
-                    const isOurChat = Object.values(privateChats).includes(chatId);
-                    if (!isOurChat) return;
+                if (!chatId.includes(socket.id)) {
+                    console.log('⏭️ Пропускаем сообщение не для нас');
+                    return;
                 }
             }
             
-            if (!chatHistory[chatId]) chatHistory[chatId] = [];
+            if (!chatHistory[chatId]) {
+                chatHistory[chatId] = [];
+                console.log('📁 Создана история для чата:', chatId);
+            }
             chatHistory[chatId].push(msg);
+            console.log('💾 Сохранено в историю, всего сообщений:', chatHistory[chatId].length);
             
             if (currentChat === chatId) {
+                console.log('👀 Показываем сообщение в текущем чате');
                 const div = createMessageElement(msg);
                 chatWindow.appendChild(div);
                 chatWindow.scrollTop = chatWindow.scrollHeight;
             } else {
+                console.log('🔔 Сообщение не в текущем чате, обновляем бейдж');
                 const badge = document.querySelector(`.chat-item[data-chat="${chatId}"] .chat-badge`);
                 if (badge) {
                     const count = parseInt(badge.textContent) || 0;
@@ -872,6 +900,13 @@
         });
 
         socket.on('chatHistory', (data) => {
+            console.log('📜 Получена история для чата:', data.chatId, 'сообщений:', data.messages.length);
+            
+            if (!chatHistory[data.chatId]) {
+                chatHistory[data.chatId] = [];
+            }
+            chatHistory[data.chatId] = data.messages;
+            
             if (data.chatId === currentChat) {
                 chatWindow.innerHTML = '';
                 const history = data.messages || [];
@@ -880,6 +915,7 @@
                     chatWindow.appendChild(div);
                 });
                 chatWindow.scrollTop = chatWindow.scrollHeight;
+                console.log('📜 Отображено', history.length, 'сообщений в чате');
             }
         });
 
